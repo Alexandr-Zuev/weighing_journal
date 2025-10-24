@@ -417,6 +417,9 @@
   ('right_panel',
    'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\right_panel.py',
    'PYMODULE'),
+  ('scales_manager',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\scales_manager.py',
+   'PYMODULE'),
   ('selectors',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2288.0_x64__qbz5n2kfra8p0\\Lib\\selectors.py',

@@ -5,6 +5,7 @@ class HeaderWidget(QtWidgets.QWidget):
     system_clicked = QtCore.pyqtSignal()
     login_clicked = QtCore.pyqtSignal()
     logout_clicked = QtCore.pyqtSignal()
+    add_scales_clicked = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,6 +85,10 @@ class HeaderWidget(QtWidgets.QWidget):
         self.exit_action = QtWidgets.QAction("Закрыть программу", self)
         self.exit_action.triggered.connect(self.close_application)
         self.file_menu.addAction(self.exit_action)
+
+        self.add_scales_action = QtWidgets.QAction("Добавить весы", self)
+        self.add_scales_action.triggered.connect(self.add_scales_clicked.emit)
+        self.file_menu.addAction(self.add_scales_action)
 
         # Подключаем меню к кнопке
         self.btn_file.setMenu(self.file_menu)

@@ -156,8 +156,10 @@ class WeightDisplayManager:
 class RightPanelWidget(QtWidgets.QWidget):
     # Сигнал для уведомления о новом взвешивании
     weighing_saved = QtCore.pyqtSignal()
-    
-    def __init__(self, font_family="Arial", parent=None, current_user=None):
+    # Сигнал для удаления блока весов
+    delete_requested = QtCore.pyqtSignal()
+
+    def __init__(self, font_family="Arial", parent=None, current_user=None, scales_number=1, show_info_block=True):
         super().__init__(parent)
         self.current_user = current_user
         self.serial_port = None
@@ -165,6 +167,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.current_protocol = 1  # Протокол по умолчанию
         self.setFixedWidth(437)
         self.setStyleSheet("background-color: #f9fafb; font-size: 10pt;")
+        self.show_info_block = show_info_block
 
         # Переменные для автоматического взвешивания
         self.last_weight = None
@@ -193,25 +196,25 @@ class RightPanelWidget(QtWidgets.QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(15)
 
-        # Информация о взвешивании
-        info_block = QtWidgets.QWidget()
-        info_layout = QtWidgets.QVBoxLayout(info_block)
-        info_layout.setContentsMargins(8, 8, 8, 8)
-        info_layout.setSpacing(4)
-        info_block.setStyleSheet("background: transparent;")
+        # Информация о взвешивании (только для первого блока весов)
+        if self.show_info_block:
+            self.info_block = QtWidgets.QWidget()
+            info_layout = QtWidgets.QVBoxLayout(self.info_block)
+            info_layout.setContentsMargins(8, 8, 8, 8)
+            info_layout.setSpacing(4)
+            self.info_block.setStyleSheet("background: transparent;")
 
-        label_info_title = QtWidgets.QLabel("ИНФОРМАЦИЯ О ВЗВЕШИВАНИИ")
-        label_info_title.setStyleSheet("font-weight: bold; margin-bottom: 6px;")
-        info_layout.addWidget(label_info_title)
+            label_info_title = QtWidgets.QLabel("ИНФОРМАЦИЯ О ВЗВЕШИВАНИИ")
+            label_info_title.setStyleSheet("font-weight: bold; margin-bottom: 6px;")
+            info_layout.addWidget(label_info_title)
 
-        self.label_datetime = QtWidgets.QLabel("")
-        info_layout.addWidget(self.label_datetime)
+            self.label_datetime = QtWidgets.QLabel("")
+            info_layout.addWidget(self.label_datetime)
 
+            self.label_operator = QtWidgets.QLabel("")
+            info_layout.addWidget(self.label_operator)
 
-        self.label_operator = QtWidgets.QLabel("")
-        info_layout.addWidget(self.label_operator)
-
-        layout.addWidget(info_block)
+            layout.addWidget(self.info_block)
 
         # Объединенный контейнер "Весы" для остальных блоков
         main_block = QtWidgets.QWidget()
@@ -224,10 +227,46 @@ class RightPanelWidget(QtWidgets.QWidget):
             border-radius: 8px;
         """)
 
-        # Заголовок для объединенного блока
-        scales_title = QtWidgets.QLabel("Весы№1")
+        # Заголовок для объединенного блока с кнопкой удаления
+        title_widget = QtWidgets.QWidget()
+        title_widget.setStyleSheet("background: transparent; border: none;")
+        title_layout = QtWidgets.QHBoxLayout(title_widget)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(5)
+
+        scales_title = QtWidgets.QLabel(f"Весы№{scales_number}")
         scales_title.setStyleSheet("font-weight: bold; font-size: 12pt; background: transparent; border: none; margin-bottom: 5px;")
-        main_layout.addWidget(scales_title)
+        title_layout.addWidget(scales_title)
+
+        # Кнопка удаления (крестик) - показываем только если это не первый блок весов
+        if scales_number > 1:
+            delete_button = QtWidgets.QPushButton("×")
+            delete_button.setFixedSize(20, 20)
+            # Центрируем текст в кнопке
+            delete_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #dc2626;
+                    color: white;
+                    border: none;
+                    border-radius: 10px;
+                    font-family: "Courier New", monospace;
+                    font-size: 18px;
+                    font-weight: bold;
+                    padding: 0px;
+                    margin: 0px;
+                    text-align: center;
+                    line-height: 20px;
+                }
+                QPushButton:hover {
+                    background-color: #b91c1c;
+                }
+            """)
+            delete_button.setToolTip("Удалить весы")
+            delete_button.clicked.connect(self.delete_requested.emit)
+            title_layout.addWidget(delete_button)
+
+        title_layout.addStretch()
+        main_layout.addWidget(title_widget)
 
         # Конфигурация с выпадающим меню и кнопками
         config_block = QtWidgets.QWidget()
@@ -525,6 +564,45 @@ class RightPanelWidget(QtWidgets.QWidget):
             self.weight_label, self.status_label, font_family
         )
 
+    def update_info_block_visibility(self):
+        """Обновляет видимость блока информации о взвешивании"""
+        if self.show_info_block:
+            if not hasattr(self, 'info_block') or not self.info_block:
+                # Создаем блок информации, если он отсутствует
+                self._create_info_block()
+        else:
+            # Удаляем блок информации, если он существует
+            if hasattr(self, 'info_block') and self.info_block:
+                self.layout().removeWidget(self.info_block)
+                self.info_block.deleteLater()
+                self.info_block = None
+
+    def _create_info_block(self):
+        """Создает блок информации о взвешивании"""
+        if hasattr(self, 'info_block') and self.info_block:
+            return
+
+        info_block = QtWidgets.QWidget()
+        info_layout = QtWidgets.QVBoxLayout(info_block)
+        info_layout.setContentsMargins(8, 8, 8, 8)
+        info_layout.setSpacing(4)
+        info_block.setStyleSheet("background: transparent;")
+
+        label_info_title = QtWidgets.QLabel("ИНФОРМАЦИЯ О ВЗВЕШИВАНИИ")
+        label_info_title.setStyleSheet("font-weight: bold; margin-bottom: 6px;")
+        info_layout.addWidget(label_info_title)
+
+        self.label_datetime = QtWidgets.QLabel("")
+        info_layout.addWidget(self.label_datetime)
+
+        self.label_operator = QtWidgets.QLabel("")
+        info_layout.addWidget(self.label_operator)
+
+        # Вставляем блок информации в начало layout
+        layout = self.layout()
+        layout.insertWidget(0, info_block)
+        self.info_block = info_block
+
     def load_configurations_into_combo(self):
         self.config_combo.clear()
         if not self.current_user:
@@ -538,6 +616,10 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.config_combo.addItems(names)
 
     def update_info_display(self):
+        # Обновляем информацию только если блок информации включен
+        if not self.show_info_block:
+            return
+
         now_str = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         self.label_datetime.setText(f"Дата и время: {now_str}")
 
@@ -807,11 +889,6 @@ class RightPanelWidget(QtWidgets.QWidget):
                 scales_name=scales_name
             )
 
-            # Очищаем поля ввода после сохранения
-            self.input_cargo_name.clear()
-            self.input_sender.clear()
-            self.input_recipient.clear()
-            self.input_comment.clear()
 
             # Устанавливаем флаги для предотвращения повторного сохранения
             self.last_saved_weight = weight
@@ -940,11 +1017,6 @@ class RightPanelWidget(QtWidgets.QWidget):
                 scales_name=scales_name
             )
             
-            # Очищаем поля ввода после сохранения
-            self.input_cargo_name.clear()
-            self.input_sender.clear()
-            self.input_recipient.clear()
-            self.input_comment.clear()
             
             # Устанавливаем флаги для автоматического взвешивания
             self.last_saved_weight = weight

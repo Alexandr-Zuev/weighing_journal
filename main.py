@@ -3,7 +3,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5 import QtPrintSupport
 from header import HeaderWidget
 from left_panel import LeftPanelWidget
-from right_panel import RightPanelWidget
+from scales_manager import ScalesManager
 from footer import FooterWidget
 from com_config_dialog import ComConfigDialog
 from login_dialog import LoginDialog
@@ -33,8 +33,8 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.left_panel = LeftPanelWidget()
         h_layout.addWidget(self.left_panel, stretch=3)
 
-        self.right_panel = RightPanelWidget(font_family=font_family)
-        h_layout.addWidget(self.right_panel, stretch=1)
+        self.scales_manager = ScalesManager(font_family=font_family)
+        h_layout.addWidget(self.scales_manager, stretch=1)
 
         self.footer = FooterWidget()
         main_layout.addWidget(self.footer)
@@ -45,9 +45,10 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.header.system_clicked.connect(self.open_com_config_dialog)
         self.header.login_clicked.connect(self.open_login_dialog)
         self.header.logout_clicked.connect(self.on_logout)
+        self.header.add_scales_clicked.connect(self.add_new_scales)
         
         # Подключение сигнала сохранения взвешивания к обновлению таблицы
-        self.right_panel.weighing_saved.connect(self.left_panel.refresh_weighings_data)
+        self.scales_manager.weighing_saved.connect(self.left_panel.refresh_weighings_data)
 
         # Связываем сводку и пользователя с футером
         self.left_panel.summary_changed.connect(self.footer.set_status_text)
@@ -57,6 +58,10 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.footer.print_clicked.connect(self.on_footer_print)
         self.footer.export_clicked.connect(self.on_footer_export)
         self.footer.report_clicked.connect(self.on_footer_report)
+
+    def add_new_scales(self):
+        """Добавляет новые весы в интерфейс"""
+        self.scales_manager.add_scales()
 
     def on_footer_print(self):
         # Формирование накладной (PDF)
@@ -237,9 +242,8 @@ class WeighingJournal(QtWidgets.QMainWindow):
             username = dialog.logged_in_user
             self.current_user = username
             self.header.set_logged_in_user(username)
-            # ВАЖНО: здесь обновляем текущего пользователя right_panel и загружаем конфигурации
-            self.right_panel.current_user = username
-            self.right_panel.load_configurations_into_combo()
+            # ВАЖНО: здесь обновляем текущего пользователя scales_manager и загружаем конфигурации
+            self.scales_manager.set_current_user(username)
             # Обновляем левую панель для показа таблицы пользователя
             self.left_panel.set_current_user(username)
             # Обновляем футер
@@ -260,8 +264,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
             # Выполняем выход из системы
             self.current_user = None
             self.header.logout()
-            self.right_panel.current_user = None
-            self.right_panel.load_configurations_into_combo()  # Очистить список после выхода
+            self.scales_manager.set_current_user(None)  # Очистить пользователя после выхода
             # Обновляем левую панель для показа сообщения о необходимости входа
             self.left_panel.set_current_user(None)
             # Обновляем футер
