@@ -13,7 +13,7 @@ DB_FILE = 'weights_journal.db'
 class WeightDisplayManager:
     """Управление отображением веса с оптимизированной производительностью"""
 
-    def __init__(self, weight_label, status_label, font_family="Arial"):
+    def __init__(self, weight_label, status_label, font_family="DSEG7Classic-Regular"):
         self.weight_label = weight_label
         self.status_label = status_label
         self.font_family = font_family
@@ -165,9 +165,11 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.serial_port = None
         self.current_config_name = None
         self.current_protocol = 1  # Протокол по умолчанию
+        self.scales_number = scales_number  # Сохраняем номер весов
         self.setFixedWidth(437)
         self.setStyleSheet("background-color: #f9fafb; font-size: 10pt;")
         self.show_info_block = show_info_block
+        self.printer_manager = None  # Менеджер термопринтера
 
         # Переменные для автоматического взвешивания
         self.last_weight = None
@@ -433,6 +435,9 @@ class RightPanelWidget(QtWidgets.QWidget):
 
         self.auto_weight_checkbox = QtWidgets.QCheckBox("Включить")
         checkbox_layout.addWidget(self.auto_weight_checkbox)
+
+        self.receipt_checkbox = QtWidgets.QCheckBox("Чекопечать")
+        checkbox_layout.addWidget(self.receipt_checkbox)
 
         interval_label = QtWidgets.QLabel("Интервал стабилизации в сек:")
         checkbox_layout.addWidget(interval_label)
@@ -889,7 +894,6 @@ class RightPanelWidget(QtWidgets.QWidget):
                 scales_name=scales_name
             )
 
-
             # Устанавливаем флаги для предотвращения повторного сохранения
             self.last_saved_weight = weight
             self.weight_was_zero = False
@@ -898,6 +902,31 @@ class RightPanelWidget(QtWidgets.QWidget):
             self.weighing_saved.emit()
 
             print(f"Автоматически сохранен вес: {weight} кг")
+
+            # Автоматическая чекопечать если включена
+            if self.receipt_checkbox.isChecked():
+                # Получаем данные для чека
+                receipt_data = {
+                    "datetime": current_datetime,
+                    "weight": str(weight),
+                    "operator": self.current_user,
+                    "mode": "Автоматическое",
+                    "name": cargo_name,
+                    "warehouse": scales_name,
+                    "sender": sender,
+                    "receiver": recipient,
+                    "notes": comment
+                }
+
+                # Используем переданный printer_manager
+                if hasattr(self, 'printer_manager') and self.printer_manager:
+                    success, message = self.printer_manager.print_receipt(receipt_data)
+                    if success:
+                        print(f"Чек автоматически распечатан: {weight} кг")
+                    else:
+                        print(f"Ошибка при автоматической чекопечати: {message}")
+                else:
+                    print("Ошибка: менеджер термопринтера не доступен")
 
         except Exception as e:
             print(f"Ошибка при автоматическом сохранении: {str(e)}")

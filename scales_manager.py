@@ -16,6 +16,7 @@ class ScalesManager(QtWidgets.QWidget):
         self.current_user = None
         self.scales_widgets = []  # Список всех виджетов весов
         self.scales_counter = 1   # Счетчик для нумерации весов
+        self.printer_manager = None  # Менеджер термопринтера
 
         # Создаем scroll area для возможности прокрутки при множестве весов
         self.scroll_area = QtWidgets.QScrollArea()
@@ -159,6 +160,7 @@ class ScalesManager(QtWidgets.QWidget):
         self.current_user = user
         for scales_widget in self.scales_widgets:
             scales_widget.current_user = user
+            scales_widget.printer_manager = self.printer_manager  # Передаем printer_manager в каждый виджет
             scales_widget.load_configurations_into_combo()
 
     def get_scales_count(self):

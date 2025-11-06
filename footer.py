@@ -5,6 +5,7 @@ class FooterWidget(QtWidgets.QWidget):
     print_clicked = QtCore.pyqtSignal()
     export_clicked = QtCore.pyqtSignal()
     report_clicked = QtCore.pyqtSignal()
+    receipt_print_clicked = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -32,6 +33,7 @@ class FooterWidget(QtWidgets.QWidget):
         center_widget.setStyleSheet("background: transparent; border: none;")
         buttons_text = [
             "ПЕЧАТЬ",
+            "ЧЕКОПЕЧАТЬ",
             "ЭКСПОРТИРОВАТЬ ДАННЫЕ",
             "ПОДГОТОВИТЬ ОТЧЕТ",
         ]
@@ -56,11 +58,14 @@ class FooterWidget(QtWidgets.QWidget):
         )
         self.btn_print = QtWidgets.QPushButton(buttons_text[0])
         self.btn_print.setStyleSheet(btn_style)
-        self.btn_export = QtWidgets.QPushButton(buttons_text[1])
+        self.btn_receipt_print = QtWidgets.QPushButton(buttons_text[1])
+        self.btn_receipt_print.setStyleSheet(btn_style)
+        self.btn_export = QtWidgets.QPushButton(buttons_text[2])
         self.btn_export.setStyleSheet(btn_style)
-        self.btn_report = QtWidgets.QPushButton(buttons_text[2])
+        self.btn_report = QtWidgets.QPushButton(buttons_text[3])
         self.btn_report.setStyleSheet(btn_style)
         center_layout.addWidget(self.btn_print)
+        center_layout.addWidget(self.btn_receipt_print)
         center_layout.addWidget(self.btn_export)
         center_layout.addWidget(self.btn_report)
         footer_layout.addWidget(center_widget, alignment=QtCore.Qt.AlignHCenter)
@@ -71,6 +76,7 @@ class FooterWidget(QtWidgets.QWidget):
 
         # Подключаем сигналы кнопок
         self.btn_print.clicked.connect(self.print_clicked.emit)
+        self.btn_receipt_print.clicked.connect(self.receipt_print_clicked.emit)
         self.btn_export.clicked.connect(self.export_clicked.emit)
         self.btn_report.clicked.connect(self.report_clicked.emit)
 

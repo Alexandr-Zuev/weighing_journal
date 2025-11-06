@@ -7,7 +7,10 @@ from scales_manager import ScalesManager
 from footer import FooterWidget
 from com_config_dialog import ComConfigDialog
 from login_dialog import LoginDialog
+from thermal_printer_manager import ThermalPrinterManager
+from thermal_printer_dialog import ThermalPrinterDialog
 import csv
+from datetime import datetime
 
 
 class WeighingJournal(QtWidgets.QMainWindow):
@@ -41,8 +44,15 @@ class WeighingJournal(QtWidgets.QMainWindow):
 
         self.current_user = None
 
+        # Инициализация менеджера термопринтера
+        self.printer_manager = ThermalPrinterManager()
+
+        # Передаем printer_manager в scales_manager
+        self.scales_manager.printer_manager = self.printer_manager
+
         # Подключение сигналов из HeaderWidget
         self.header.system_clicked.connect(self.open_com_config_dialog)
+        self.header.printer_config_clicked.connect(self.open_printer_config_dialog)
         self.header.login_clicked.connect(self.open_login_dialog)
         self.header.logout_clicked.connect(self.on_logout)
         self.header.add_scales_clicked.connect(self.add_new_scales)
@@ -56,6 +66,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
 
         # Действия футера
         self.footer.print_clicked.connect(self.on_footer_print)
+        self.footer.receipt_print_clicked.connect(self.on_footer_receipt_print)
         self.footer.export_clicked.connect(self.on_footer_export)
         self.footer.report_clicked.connect(self.on_footer_report)
 
@@ -64,7 +75,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.scales_manager.add_scales()
 
     def on_footer_print(self):
-        # Формирование накладной (PDF)
+        # Формирование накладной (PDF) - альбомная ориентация
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, "Сохранить накладную", "nakladnaya.pdf", "PDF (*.pdf)"
         )
@@ -77,6 +88,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
         printer.setOutputFormat(QtPrintSupport.QPrinter.PdfFormat)
         printer.setOutputFileName(path)
         printer.setPageSize(QtPrintSupport.QPrinter.A4)
+        printer.setOrientation(QtPrintSupport.QPrinter.Landscape)  # Альбомная ориентация
         printer.setPageMargins(10, 10, 10, 10, QtPrintSupport.QPrinter.Millimeter)
 
         painter = QtGui.QPainter(printer)
@@ -92,9 +104,9 @@ class WeighingJournal(QtWidgets.QMainWindow):
         x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
 
         # Шрифты
-        font_title = QtGui.QFont("Arial", 14, QtGui.QFont.Bold)
-        font_small = QtGui.QFont("Arial", 9)
-        font_table = QtGui.QFont("Arial", 9)
+        font_title = QtGui.QFont("Calibri", 14, QtGui.QFont.Bold)
+        font_small = QtGui.QFont("Calibri", 9)
+        font_table = QtGui.QFont("Calibri", 9)
 
         # Заголовок
         painter.setFont(font_title)
@@ -103,7 +115,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
 
         painter.setFont(font_small)
         date_str = QtCore.QDate.currentDate().toString("dd.MM.yyyy")
-        painter.drawText(x, y + 60, w, 20, QtCore.Qt.AlignRight, date_str)
+        painter.drawText(x, y + 60, w - 20, 20, QtCore.Qt.AlignRight, date_str)
 
         # Поля отправитель/получатель
         topY = y + 90
@@ -117,21 +129,24 @@ class WeighingJournal(QtWidgets.QMainWindow):
         startY = topY + 2*line_h + 20
         table_h = h - startY - 40
 
-        headers = [
-            "№",
-            "Дата/Время",
-            "Наименование",
-            "Кол-во (кг)",
-            "Склад",
-            "Отпр.",
-            "Получ.",
-            "Опер.",
-            "Режим",
-            "Примечание",
-        ]
+        # Получаем заголовки из таблицы
+        table_headers = []
+        for i in range(self.left_panel.table.columnCount()):
+            header_item = self.left_panel.table.horizontalHeaderItem(i)
+            if header_item:
+                table_headers.append(header_item.text())
+            else:
+                table_headers.append(f"Колонка {i+1}")
 
-        # Пропорции колонок (сумма 1.0)
-        ratios = [0.05, 0.13, 0.17, 0.1, 0.07, 0.08, 0.08, 0.07, 0.07, 0.18]
+        headers = ["№"] + table_headers
+
+        # Пропорции колонок (сумма 1.0) - динамически рассчитываем для количества заголовков
+        num_columns = len(headers)
+        if num_columns > 1:
+            # Первый столбец (№) имеет фиксированную ширину 5%, остальные делят оставшиеся 95%
+            ratios = [0.05] + [(0.95 / (num_columns - 1))] * (num_columns - 1)
+        else:
+            ratios = [1.0]
         col_x = [x]
         for r in ratios:
             col_x.append(col_x[-1] + int(w * r))
@@ -182,7 +197,11 @@ class WeighingJournal(QtWidgets.QMainWindow):
             recv_v = val(7)
             note_v = val(8)
 
-            values = [num, datetime_v, name_v, weight_v, sklad_v, send_v, recv_v, oper_v, mode_v, note_v]
+            # Собираем значения в соответствии с заголовками таблицы
+            values = [num]
+            for i in range(table.columnCount()):
+                item = table.item(idx, i)
+                values.append(item.text() if item else "")
             for i, text in enumerate(values):
                 painter.drawText(col_x[i] + 4, y_cursor, int(w * ratios[i]) - 8, row_h,
                                  QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, text)
@@ -208,6 +227,57 @@ class WeighingJournal(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.information(self, "Экспорт", "Данные успешно экспортированы в CSV.")
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Ошибка экспорта", str(e))
+
+    def on_footer_receipt_print(self):
+        """Печать чека из выделенной строки"""
+        table = self.left_panel.table
+
+        # Получить индекс выделенной строки (или текущей строки)
+        selected_rows = table.selectionModel().selectedRows() if table.selectionModel() else []
+        if selected_rows:
+            row_index = selected_rows[0].row()
+        else:
+            current = table.currentRow()
+            if current < 0:
+                QtWidgets.QMessageBox.warning(self, "Ошибка", "Выберите строку для печати чека!")
+                return
+            row_index = current
+
+        # Собрать данные из строки
+        receipt_data = {}
+        headers = []
+        for col in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(col)
+            if header_item:
+                headers.append(header_item.text())
+
+        for col in range(table.columnCount()):
+            item = table.item(row_index, col)
+            value = item.text() if item else ""
+            header = headers[col] if col < len(headers) else f"Колонка_{col}"
+
+            # Маппинг заголовков на ключи данных чека
+            header_mapping = {
+                "Дата/Время": "datetime",
+                "Вес": "weight",
+                "Оператор": "operator",
+                "Режим": "mode",
+                "Наименование": "name",
+                "Склад": "warehouse",
+                "Отпр.": "sender",
+                "Получ.": "receiver",
+                "Примечание": "notes"
+            }
+
+            key = header_mapping.get(header, header.lower().replace(" ", "_"))
+            receipt_data[key] = value
+
+        # Распечатать чек
+        success, message = self.printer_manager.print_receipt(receipt_data)
+        if success:
+            QtWidgets.QMessageBox.information(self, "Успех", message)
+        else:
+            QtWidgets.QMessageBox.critical(self, "Ошибка", message)
 
     def on_footer_report(self):
         # Простой отчет: количество записей и диапазон дат
@@ -235,6 +305,11 @@ class WeighingJournal(QtWidgets.QMainWindow):
             com_port = dialog.port_combo.currentText()
             baud_rate = dialog.baud_combo.currentText()
             print(f"Config: {config_name}, Port: {com_port}, Baud: {baud_rate}")
+
+    def open_printer_config_dialog(self):
+        """Открыть диалог настроек термопринтера"""
+        dialog = ThermalPrinterDialog(parent=self, printer_manager=self.printer_manager)
+        dialog.exec_()
 
     def open_login_dialog(self):
         dialog = LoginDialog(self)

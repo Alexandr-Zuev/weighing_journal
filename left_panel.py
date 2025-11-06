@@ -188,15 +188,17 @@ class LeftPanelWidget(QtWidgets.QWidget):
                 border: 1px solid #d0d0d0;
                 font-weight: bold;
                 font-size: 10pt;
+                font-family: Calibri;
             }
             QTableWidget {
                 gridline-color: #d0d0d0;
-                font-family: Arial;
+                font-family: Calibri;
                 font-size: 11pt;
                 background-image: url(static/logo_nv.png);
                 background-repeat: no-repeat;
                 background-position: center center;
                 background-attachment: fixed;
+                background-color: rgba(255, 255, 255, 0.5);
             }
             QTableWidget::item {
                 padding: 4px;

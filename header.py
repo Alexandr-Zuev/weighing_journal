@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 
 class HeaderWidget(QtWidgets.QWidget):
     system_clicked = QtCore.pyqtSignal()
+    printer_config_clicked = QtCore.pyqtSignal()
     login_clicked = QtCore.pyqtSignal()
     logout_clicked = QtCore.pyqtSignal()
     add_scales_clicked = QtCore.pyqtSignal()
@@ -54,7 +55,7 @@ class HeaderWidget(QtWidgets.QWidget):
         self.logo_label.setPixmap(scaled_pixmap)
         left_layout.addWidget(self.logo_label)
 
-        # Кнопки в нужном порядке: Файл -> Настройки подключения -> Справка
+        # Кнопки в нужном порядке: Файл -> Настройки -> Справка
         self.btn_file = QtWidgets.QPushButton("Файл")
         self.btn_file.setFlat(True)  # Убираем стандартный вид кнопки
 
@@ -82,10 +83,6 @@ class HeaderWidget(QtWidgets.QWidget):
                 color: black;
             }
         """)
-        self.exit_action = QtWidgets.QAction("Закрыть программу", self)
-        self.exit_action.triggered.connect(self.close_application)
-        self.file_menu.addAction(self.exit_action)
-
         self.add_scales_action = QtWidgets.QAction("Добавить весы", self)
         self.add_scales_action.triggered.connect(self.add_scales_clicked.emit)
         self.file_menu.addAction(self.add_scales_action)
@@ -93,9 +90,43 @@ class HeaderWidget(QtWidgets.QWidget):
         # Подключаем меню к кнопке
         self.btn_file.setMenu(self.file_menu)
 
-        self.btn_system = QtWidgets.QPushButton("Настройки подключения к весам")
-        self.btn_system.setFlat(True)  # Убираем стандартный вид кнопки
-        self.btn_system.clicked.connect(self.system_clicked.emit)
+        self.btn_settings = QtWidgets.QPushButton("Настройки")
+        self.btn_settings.setFlat(True)  # Убираем стандартный вид кнопки
+
+        # Создаем выпадающее меню для кнопки Настройки
+        self.settings_menu = QtWidgets.QMenu(self.btn_settings)
+        self.settings_menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 4px 0;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                color: black;
+                font-size: 11pt;
+            }
+            QMenu::item:selected {
+                background-color: #f3f4f6;
+                color: black;
+            }
+            QMenu::item:hover {
+                background-color: #f3f4f6;
+                color: black;
+            }
+        """)
+        self.scales_config_action = QtWidgets.QAction("Подключения к весам", self)
+        self.scales_config_action.triggered.connect(self.system_clicked.emit)
+        self.settings_menu.addAction(self.scales_config_action)
+
+        self.printer_config_action = QtWidgets.QAction("Подключение к термопринтеру", self)
+        self.printer_config_action.triggered.connect(self.printer_config_clicked.emit)
+        self.settings_menu.addAction(self.printer_config_action)
+
+        # Подключаем меню к кнопке
+        self.btn_settings.setMenu(self.settings_menu)
 
         self.btn_help = QtWidgets.QPushButton("Справка")
         self.btn_help.setFlat(True)  # Убираем стандартный вид кнопки
@@ -104,7 +135,7 @@ class HeaderWidget(QtWidgets.QWidget):
         self.btn_help.clicked.connect(self.show_about_program)
 
         left_layout.addWidget(self.btn_file)
-        left_layout.addWidget(self.btn_system)
+        left_layout.addWidget(self.btn_settings)
         left_layout.addWidget(self.btn_help)
 
         top_layout.addWidget(left_widget, alignment=QtCore.Qt.AlignLeft)
@@ -170,20 +201,24 @@ class HeaderWidget(QtWidgets.QWidget):
     def show_about_program(self):
         """Показывает информацию о программе"""
         about_text = """
-        <div style='text-align: center;'>
+        <div style='text-align: left;'>
             <h3>О программе</h3>
-            <p><b>Пользователь:</b> Пользователь Windows</p>
-            <p><b>Ключ защиты:</b> Информация отсутствует</p>
-            <p><b>Разработчик:</b> Zuev A.D</p>
-            <p><b>Версия:</b> 0.8.2</p>
+            <p><b>Журнал взвешиваний 7.0</b></p>
+            <p>Web-интерфейс Журнал взвешиваний, версия 0.8.2 от 31.10.2025</p>
+            <p>Авторские права © Zuev A.D</p>
+            <p>ПО "Web-интерфейс Журнал взвешиваний" предназначено для предоставления данных с помощью стандартного интернет-браузера.</p>
+            <p>Применение веб-интерфейса избавляет от необходимости установки, конфигурирования и сопровождения специализированного ПО на рабочем месте клиента.</p>
+            <p><b>Серийный номер:</b> 10027/272B:2D065F22</p>
+            <p><b>Версия дистрибутива:</b> 0.8.2</p>
+            <p><b>Используемое окружение:</b> Windows 10</p>
         </div>
         """
 
-        QtWidgets.QMessageBox.about(
-            self,
-            "О программе - Журнал взвешиваний",
-            about_text
-        )
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setWindowTitle("О программе")
+        msg_box.setText(about_text)
+        msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        msg_box.exec_()
 
     def set_logged_in_user(self, username):
         self.logged_in_user = username
