@@ -43,10 +43,12 @@ class WeighingJournal(QtWidgets.QMainWindow):
         main_layout.addLayout(h_layout)
 
         self.left_panel = LeftPanelWidget()
-        h_layout.addWidget(self.left_panel, stretch=3)
+        h_layout.addWidget(self.left_panel, stretch=1)
 
         self.scales_manager = ScalesManager(font_family=font_family)
-        h_layout.addWidget(self.scales_manager, stretch=1)
+        # Фиксированная минимальная ширина для правой панели
+        self.scales_manager.setMinimumWidth(450)
+        h_layout.addWidget(self.scales_manager, stretch=0)
 
         self.footer = FooterWidget()
         main_layout.addWidget(self.footer)
