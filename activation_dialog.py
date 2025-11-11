@@ -6,7 +6,7 @@ class ActivationDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("Активация лицензии")
         self.setModal(True)
-        self.resize(400, 250)
+        self.setFixedSize(400, 140)
 
         layout = QtWidgets.QVBoxLayout()
 

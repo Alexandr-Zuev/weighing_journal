@@ -406,8 +406,9 @@ class RightPanelWidget(QtWidgets.QWidget):
         left_layout.setSpacing(8)
 
         self.save_weight_button = QtWidgets.QPushButton("Сохранить вес")
-        icon = QtGui.QIcon("static/sint.svg")
+        icon = QtGui.QIcon("static/705e3.svg")
         self.save_weight_button.setIcon(icon)
+        self.save_weight_button.setIconSize(QtCore.QSize(32, 32))
         self.save_weight_button.setStyleSheet("""
             background-color: #e5e7eb;
             border: 1px solid #9ca3af;

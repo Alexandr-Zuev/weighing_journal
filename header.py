@@ -209,6 +209,9 @@ class HeaderWidget(QtWidgets.QWidget):
 
         self.logout_button = QtWidgets.QPushButton("Завершить сеанс")
         self.logout_button.setStyleSheet("font-size: 11pt;")
+        logout_icon = QtGui.QIcon("static/603018.svg")
+        self.logout_button.setIcon(logout_icon)
+        self.logout_button.setIconSize(QtCore.QSize(32, 32))
         self.logout_button.clicked.connect(self.logout_clicked.emit)
         self.logout_button.setVisible(False)
         right_layout.addWidget(self.logout_button)
@@ -252,6 +255,7 @@ class HeaderWidget(QtWidgets.QWidget):
         msg_box.setWindowTitle("О программе")
         msg_box.setText(about_text)
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        msg_box.setFixedSize(500, 240)
         msg_box.exec_()
 
     def show_license_info(self):
@@ -288,25 +292,21 @@ class HeaderWidget(QtWidgets.QWidget):
         msg_box.setWindowTitle("Лицензия")
         msg_box.setText(license_text)
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
-        # Устанавливаем размер окна такой же как у "О программе"
-        msg_box.resize(500, 400)
+        # Устанавливаем размер по контенту
+        msg_box.adjustSize()
         msg_box.exec_()
 
     def set_logged_in_user(self, username):
         self.logged_in_user = username
-        self.user_label.setVisible(True)      # Показываем "Пользователь:"
-        self.user_button.setText(username)
-        self.user_button.setIcon(QtGui.QIcon())
-        self.user_button.setEnabled(False)
-        try:
-            self.user_button.clicked.disconnect()
-        except TypeError:
-            pass
+        # Не показываем информацию о пользователе в хедере
+        self.user_label.setVisible(False)      # Скрываем "Пользователь:"
+        self.user_button.setVisible(False)     # Скрываем кнопку пользователя
         self.logout_button.setVisible(True)
 
     def logout(self):
         self.logged_in_user = None
         self.user_label.setVisible(False)     # Скрываем "Пользователь:"
+        self.user_button.setVisible(True)     # Показываем кнопку войти
         self.user_button.setText("Войти")
         user_icon = QtGui.QIcon("static/user_icon.svg")
         self.user_button.setIcon(user_icon)

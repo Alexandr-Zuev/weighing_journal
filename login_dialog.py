@@ -1,5 +1,5 @@
 import sqlite3
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtGui, QtCore
 
 DB_FILE = 'weights_journal.db'
 
@@ -20,9 +20,19 @@ class LoginDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Авторизация оператора")
-        self.setFixedSize(320, 200)
+        self.setFixedSize(320, 220)
 
         layout = QtWidgets.QVBoxLayout(self)
+
+        # Добавляем иконку вверху
+        icon_layout = QtWidgets.QHBoxLayout()
+        icon_label = QtWidgets.QLabel()
+        icon = QtGui.QIcon("static/210222.svg")
+        icon_pixmap = icon.pixmap(100, 100)  # Растянутая в ширину иконка
+        icon_label.setPixmap(icon_pixmap)
+        icon_label.setScaledContents(True)  # Разрешаем масштабирование содержимого
+        icon_layout.addWidget(icon_label, alignment=QtCore.Qt.AlignCenter)
+        layout.addLayout(icon_layout)
 
         form_layout = QtWidgets.QFormLayout()
         self.username_combo = QtWidgets.QComboBox()
