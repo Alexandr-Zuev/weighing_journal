@@ -11,6 +11,8 @@ from thermal_printer_manager import ThermalPrinterManager
 from thermal_printer_dialog import ThermalPrinterDialog
 import csv
 from datetime import datetime
+import license_manager
+from activation_dialog import ActivationDialog
 
 
 class WeighingJournal(QtWidgets.QMainWindow):
@@ -18,6 +20,13 @@ class WeighingJournal(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Журнал взвешиваний")
         self.resize(1300, 820)
+
+        # Проверка лицензии
+        if not license_manager.is_license_valid():
+            activation_dialog = ActivationDialog()
+            result = activation_dialog.exec_()
+            if result != QtWidgets.QDialog.Accepted:
+                sys.exit(1)
 
         font_id = QtGui.QFontDatabase.addApplicationFont("static/DSEG7Classic-Regular.ttf")
         font_families = QtGui.QFontDatabase.applicationFontFamilies(font_id)
