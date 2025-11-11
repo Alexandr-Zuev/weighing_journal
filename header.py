@@ -120,7 +120,7 @@ class HeaderWidget(QtWidgets.QWidget):
                 color: black;
             }
         """)
-        self.scales_config_action = QtWidgets.QAction("Подключения к весам", self)
+        self.scales_config_action = QtWidgets.QAction("Подключение к весам", self)
         self.scales_config_action.triggered.connect(self.system_clicked.emit)
         self.settings_menu.addAction(self.scales_config_action)
 
@@ -238,13 +238,12 @@ class HeaderWidget(QtWidgets.QWidget):
         about_text = """
         <div style='text-align: left;'>
             <h3>О программе</h3>
-            <p><b>Журнал взвешиваний 7.0</b></p>
-            <p>Web-интерфейс Журнал взвешиваний, версия 0.8.2 от 31.10.2025</p>
-            <p>Авторские права © Zuev A.D</p>
-            <p>ПО "Web-интерфейс Журнал взвешиваний" предназначено для предоставления данных с помощью стандартного интернет-браузера.</p>
-            <p>Применение веб-интерфейса избавляет от необходимости установки, конфигурирования и сопровождения специализированного ПО на рабочем месте клиента.</p>
+            <p><b>Журнал взвешиваний 2.0</b></p>
+            <p>Web-интерфейс Журнал взвешиваний, версия 0.8.5 от 11.11.2025</p>
+            <p>Авторские права © Зуев А.Д.</p>
+            <p>ПО "Web-интерфейс Журнал взвешиваний 2.0" предназначено для автоматизации процесса учета взвешивания грузов в складских, производственных и торговых помещениях.</p>
+            <p>Локальное хранение всех взвешиваний на рабочем месте клиента.</p>
             <p><b>Серийный номер:</b> 10027/272B:2D065F22</p>
-            <p><b>Версия дистрибутива:</b> 0.8.2</p>
             <p><b>Используемое окружение:</b> Windows 10</p>
         </div>
         """
@@ -275,10 +274,12 @@ class HeaderWidget(QtWidgets.QWidget):
             </div>
             """
         else:
-            license_text = """
+            system_uuid = license_manager.get_system_uuid()
+            license_text = f"""
             <div style='text-align: left;'>
                 <h3>Информация о лицензии</h3>
                 <p><b>Статус лицензии:</b> Не активирована</p>
+                <p><b>UUID системы:</b> {system_uuid}</p>
                 <p>Для активации лицензии введите код активации при запуске программы.</p>
             </div>
             """
@@ -287,6 +288,8 @@ class HeaderWidget(QtWidgets.QWidget):
         msg_box.setWindowTitle("Лицензия")
         msg_box.setText(license_text)
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        # Устанавливаем размер окна такой же как у "О программе"
+        msg_box.resize(500, 400)
         msg_box.exec_()
 
     def set_logged_in_user(self, username):

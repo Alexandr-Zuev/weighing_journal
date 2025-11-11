@@ -84,18 +84,26 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.scales_manager.add_scales()
 
     def on_footer_print(self):
-        # Формирование накладной (PDF) - альбомная ориентация
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Сохранить накладную", "nakladnaya.pdf", "PDF (*.pdf)"
-        )
-        if not path:
+        # Формирование акта взвешивания (PDF) - альбомная ориентация
+        import tempfile
+        import os
+        import subprocess
+
+        # Проверяем, выделена ли ровно 1 строка в таблице
+        table = self.left_panel.table
+        selected_rows = table.selectionModel().selectedRows() if table.selectionModel() else []
+
+        if len(selected_rows) != 1:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Выберите ровно одну строку для формирования акта взвешивания!")
             return
-        if not path.lower().endswith('.pdf'):
-            path += '.pdf'
+
+        # Создаем временный файл
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_path = temp_file.name
 
         printer = QtPrintSupport.QPrinter()
         printer.setOutputFormat(QtPrintSupport.QPrinter.PdfFormat)
-        printer.setOutputFileName(path)
+        printer.setOutputFileName(temp_path)
         printer.setPageSize(QtPrintSupport.QPrinter.A4)
         printer.setOrientation(QtPrintSupport.QPrinter.Landscape)  # Альбомная ориентация
         printer.setPageMargins(10, 10, 10, 10, QtPrintSupport.QPrinter.Millimeter)
@@ -105,7 +113,35 @@ class WeighingJournal(QtWidgets.QMainWindow):
             self._draw_invoice(painter, printer)
         finally:
             painter.end()
-        QtWidgets.QMessageBox.information(self, "PDF сохранен", f"Файл сохранен: {path}")
+
+        # Открываем PDF файл в системном просмотрщике
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(temp_path)
+            elif os.name == 'posix':  # Linux/Mac
+                subprocess.run(['xdg-open', temp_path], check=False)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", f"Не удалось открыть PDF файл: {str(e)}")
+            # В случае ошибки открытия, показываем диалог сохранения
+            save_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Сохранить акт взвешивания", "akt_vzveshivaniya.pdf", "PDF (*.pdf)"
+            )
+            if save_path:
+                import shutil
+                shutil.copy2(temp_path, save_path)
+                QtWidgets.QMessageBox.information(self, "PDF сохранен", f"Файл сохранен: {save_path}")
+
+        # Удаляем временный файл через некоторое время (асинхронно)
+        import threading
+        def cleanup_temp_file():
+            import time
+            time.sleep(5)  # Даем время на открытие файла
+            try:
+                os.unlink(temp_path)
+            except:
+                pass  # Игнорируем ошибки удаления
+
+        threading.Thread(target=cleanup_temp_file, daemon=True).start()
 
     def _draw_invoice(self, painter: QtGui.QPainter, printer: QtPrintSupport.QPrinter):
         # Геометрия страницы
@@ -113,109 +149,156 @@ class WeighingJournal(QtWidgets.QMainWindow):
         x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
 
         # Шрифты
-        font_title = QtGui.QFont("Calibri", 14, QtGui.QFont.Bold)
-        font_small = QtGui.QFont("Calibri", 9)
-        font_table = QtGui.QFont("Calibri", 9)
+        font_title = QtGui.QFont("Arial", 14, QtGui.QFont.Bold)
+        font_normal = QtGui.QFont("Arial", 10)
+        font_small = QtGui.QFont("Arial", 8)
+        font_table = QtGui.QFont("Arial", 9)
 
-        # Заголовок
+        # Верхний заголовок "АКТ ВЗВЕШИВАНИЯ"
         painter.setFont(font_title)
-        title = "НАКЛАДНАЯ № ____________"
-        painter.drawText(x, y + 30, w, 30, QtCore.Qt.AlignCenter, title)
+        title = "АКТ ВЗВЕШИВАНИЯ"
+        painter.drawText(x + 30, y + 30, w - 60, 25, QtCore.Qt.AlignCenter, title)
 
-        painter.setFont(font_small)
-        date_str = QtCore.QDate.currentDate().toString("dd.MM.yyyy")
-        painter.drawText(x, y + 60, w - 20, 20, QtCore.Qt.AlignRight, date_str)
+        # Линия под заголовком
+        painter.drawLine(x + 30, y + 55, w - 30, y + 55)
 
-        # Поля отправитель/получатель
-        topY = y + 90
-        line_h = 18
-        painter.drawText(x, topY, 120, line_h, QtCore.Qt.AlignLeft, "Отправитель:")
-        painter.drawLine(x + 100, topY + line_h - 4, x + w - 20, topY + line_h - 4)
-        painter.drawText(x, topY + line_h + 8, 120, line_h, QtCore.Qt.AlignLeft, "Получатель:")
-        painter.drawLine(x + 100, topY + 2*line_h + 4, x + w - 20, topY + 2*line_h + 4)
-
-        # Таблица
-        startY = topY + 2*line_h + 20
-        table_h = h - startY - 40
-
-        # Получаем заголовки из таблицы
-        table_headers = []
-        for i in range(self.left_panel.table.columnCount()):
-            header_item = self.left_panel.table.horizontalHeaderItem(i)
-            if header_item:
-                table_headers.append(header_item.text())
-            else:
-                table_headers.append(f"Колонка {i+1}")
-
-        headers = ["№"] + table_headers
-
-        # Пропорции колонок (сумма 1.0) - динамически рассчитываем для количества заголовков
-        num_columns = len(headers)
-        if num_columns > 1:
-            # Первый столбец (№) имеет фиксированную ширину 5%, остальные делят оставшиеся 95%
-            ratios = [0.05] + [(0.95 / (num_columns - 1))] * (num_columns - 1)
-        else:
-            ratios = [1.0]
-        col_x = [x]
-        for r in ratios:
-            col_x.append(col_x[-1] + int(w * r))
-
-        # Нарисовать шапку
-        painter.setFont(font_table)
-        header_y = startY
-        row_h = 22
-        painter.drawRect(x, header_y, w, row_h)
-        for i in range(1, len(col_x)):
-            painter.drawLine(col_x[i], header_y, col_x[i], header_y + row_h)
-        for i, htext in enumerate(headers):
-            painter.drawText(col_x[i] + 4, header_y, int(w * ratios[i]) - 8, row_h,
-                             QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, htext)
-
-        # Данные из таблицы левой панели — печатаем ТОЛЬКО одну выделенную строку
+        # Получаем данные из выбранной строки таблицы
         table = self.left_panel.table
-        y_cursor = header_y + row_h
+        selected_rows = table.selectionModel().selectedRows() if table.selectionModel() else []
+        if selected_rows:
+            row_index = selected_rows[0].row()
+        else:
+            current = table.currentRow()
+            row_index = current if current >= 0 else 0
+
+        def get_table_value(col):
+            item = table.item(row_index, col)
+            return item.text() if item else ""
+
+        # Данные из таблицы
+        datetime_val = get_table_value(0)
+        weight_val = get_table_value(1)
+        operator_val = get_table_value(2)
+        mode_val = get_table_value(3)
+        name_val = get_table_value(4)
+        warehouse_val = get_table_value(5)
+        sender_val = get_table_value(6)
+        receiver_val = get_table_value(7)
+        notes_val = get_table_value(8)
+
+        # Левая колонка - отправитель
+        painter.setFont(font_normal)
+        left_x = x + 30
+        line_height = 20
+
+        painter.drawText(left_x, y + 75, 150, line_height, QtCore.Qt.AlignLeft, "Отправитель:")
+        painter.drawText(left_x, y + 95, 150, line_height, QtCore.Qt.AlignLeft, "Адрес:")
+        painter.drawText(left_x, y + 115, 150, line_height, QtCore.Qt.AlignLeft, "Телефон:")
+
+        # Правая колонка - получатель
+        right_x = int(x + w/2 + 30)
+        painter.drawText(right_x, y + 75, 150, line_height, QtCore.Qt.AlignLeft, "Получатель:")
+        painter.drawText(right_x, y + 95, 150, line_height, QtCore.Qt.AlignLeft, "Адрес:")
+        painter.drawText(right_x, y + 115, 150, line_height, QtCore.Qt.AlignLeft, "Телефон:")
+
+        # Нижняя часть - места для подписей
+        bottom_y = h - 120
+        painter.setFont(font_normal)
+
+        # Заголовок для подписей
+        painter.drawText(x + 30, bottom_y, w - 60, 20, QtCore.Qt.AlignCenter,
+                        "Подписи ответственных лиц:")
+
+        # Первая подпись - отправитель
+        painter.drawText(x + 50, bottom_y + 25, 200, 20, QtCore.Qt.AlignLeft,
+                        "Представитель отправителя:")
+        painter.drawLine(x + 200, bottom_y + 40, x + 400, bottom_y + 40)
+
+        # Вторая подпись - получатель
+        painter.drawText(x + 450, bottom_y + 25, 200, 20, QtCore.Qt.AlignLeft,
+                        "Представитель получателя:")
+        painter.drawLine(x + 600, bottom_y + 40, w - 50, bottom_y + 40)
+
+        # Третья подпись - организация
+        painter.drawText(x + 50, bottom_y + 55, 300, 20, QtCore.Qt.AlignLeft,
+                        "Организация, проводящая взвешивание:")
+        painter.drawLine(x + 300, bottom_y + 70, w - 50, bottom_y + 70)
+
+        # Линии под полями
+        painter.drawLine(x + 30, y + 135, w - 30, y + 135)
+
+        # Таблица журнала взвешиваний
+        painter.setFont(font_normal)
+        table_y = y + 145
+
+        # Получаем заголовки из таблицы, исключая столбец "Режим"
+        table = self.left_panel.table
+        headers = []
+        for i in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(i)
+            if header_item:
+                header_text = header_item.text()
+                # Пропускаем столбец "Режим"
+                if header_text != "Режим":
+                    headers.append(header_text)
+            else:
+                headers.append(f"Колонка {i+1}")
+
+        # Ширина колонок динамически
+        if headers:
+            total_width = w - 60  # Оставляем отступы
+            col_width = total_width // len(headers)
+            col_widths = [col_width] * len(headers)
+            # Корректировка последней колонки
+            col_widths[-1] = total_width - sum(col_widths[:-1])
+        else:
+            col_widths = []
+
+        col_x = [x + 30]
+        for width in col_widths:
+            col_x.append(col_x[-1] + width)
+
+        # Заголовки таблицы
+        painter.drawRect(x + 30, table_y, sum(col_widths), 25)
+        for i, header in enumerate(headers):
+            painter.drawLine(col_x[i], table_y, col_x[i], table_y + 25)
+            painter.drawText(col_x[i] + 2, table_y, col_widths[i] - 4, 25,
+                           QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, header)
+        painter.drawLine(col_x[-1], table_y, col_x[-1], table_y + 25)
+
+        # Данные из таблицы левой панели - только выделенная строка
+        startY = table_y + 25
+        table_h = 25  # Только одна строка
 
         # Определяем индекс строки: при наличии выделения берем первую выделенную строку,
         # иначе используем текущую строку, если нет — 0
         selected_rows = table.selectionModel().selectedRows() if table.selectionModel() else []
         if selected_rows:
-            row_indices = [selected_rows[0].row()]
+            row_index = selected_rows[0].row()
         else:
             current = table.currentRow()
-            row_indices = [current if current >= 0 else 0]
+            row_index = current if current >= 0 else 0
 
-        for r in row_indices:
-            painter.drawRect(x, y_cursor, w, row_h)
-            for i in range(1, len(col_x)):
-                painter.drawLine(col_x[i], y_cursor, col_x[i], y_cursor + row_h)
+        # Рисуем строку таблицы
+        painter.setFont(font_table)
+        row_y = startY
+        painter.drawRect(x + 30, row_y, sum(col_widths), 25)
+        for i in range(len(col_x)):
+            painter.drawLine(col_x[i], row_y, col_x[i], row_y + 25)
 
-            # Сбор данных полей
-            idx = r
-            def val(ci):
-                item = table.item(idx, ci)
-                return item.text() if item else ""
+        # Заполняем ячейки данными из выделенной строки, пропуская столбец "Режим"
+        header_index = 0
+        for c in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(c)
+            if header_item and header_item.text() == "Режим":
+                continue  # Пропускаем столбец "Режим"
 
-            num = str(r + 1)
-            datetime_v = val(0)
-            weight_v = val(1)
-            oper_v = val(2)
-            mode_v = val(3)
-            name_v = val(4)
-            sklad_v = val(5)
-            send_v = val(6)
-            recv_v = val(7)
-            note_v = val(8)
-
-            # Собираем значения в соответствии с заголовками таблицы
-            values = [num]
-            for i in range(table.columnCount()):
-                item = table.item(idx, i)
-                values.append(item.text() if item else "")
-            for i, text in enumerate(values):
-                painter.drawText(col_x[i] + 4, y_cursor, int(w * ratios[i]) - 8, row_h,
-                                 QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, text)
-            y_cursor += row_h
-
+            item = table.item(row_index, c)
+            cell_text = item.text() if item else ""
+            painter.drawText(col_x[header_index] + 2, row_y, col_widths[header_index] - 4, 25,
+                           QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, cell_text)
+            header_index += 1
+        painter.drawLine(col_x[-1], row_y, col_x[-1], row_y + 25)
     def on_footer_export(self):
         # Экспорт текущей таблицы в CSV
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить как", "weighings.csv", "CSV (*.csv)")

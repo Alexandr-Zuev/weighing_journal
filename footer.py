@@ -53,7 +53,7 @@ class FooterWidget(QtWidgets.QWidget):
             "  background: #f9fafb; color: #9ca3af; border-color: #d1d5db;"
             "}"
             "QPushButton:focus {"
-            "  outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.25);"
+            "  outline: none;"
             "}"
         )
         self.btn_print = QtWidgets.QPushButton(buttons_text[0])
