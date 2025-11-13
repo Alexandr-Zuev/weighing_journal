@@ -1,6 +1,7 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime as dt
 from database import get_weighings
+import sqlite3
 
 
 class LeftPanelWidget(QtWidgets.QWidget):
@@ -9,6 +10,7 @@ class LeftPanelWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.current_user = None
         self.all_weighings = []  # хранит полные данные до фильтрации
+        self.is_admin = False  # флаг для определения, является ли пользователь админом
 
         main_layout = QtWidgets.QVBoxLayout(self)
 
@@ -159,10 +161,12 @@ class LeftPanelWidget(QtWidgets.QWidget):
         # Таблица
         self.table = QtWidgets.QTableWidget()
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        # Запрещаем редактирование таблицы
+        # Запрещаем редактирование таблицы (будет включено для админа)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         # Реакция на выделение строк для обновления сводки
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
+        # Обработчик для сохранения изменений в базе данных (только для админа)
+        self.table.itemChanged.connect(self.on_item_changed)
         # Устанавливаем политику размера для полного заполнения блока
         self.table.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         table_layout.addWidget(self.table)
@@ -246,14 +250,24 @@ class LeftPanelWidget(QtWidgets.QWidget):
         # По умолчанию показываем сообщение о необходимости входа
         self.stacked_widget.setCurrentIndex(0)
 
+        # Флаг для предотвращения рекурсии при обновлении таблицы
+        self.updating_table = False
+
     def set_current_user(self, username):
         """Устанавливает текущего пользователя и обновляет отображение"""
         self.current_user = username
+        self.is_admin = (username == "admin")
         if username:
             self.stacked_widget.setCurrentIndex(1)  # Показываем таблицу
+            # Для админа разрешаем редактирование
+            if self.is_admin:
+                self.table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.EditKeyPressed)
+            else:
+                self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
             self.load_weighings_data()
         else:
             self.stacked_widget.setCurrentIndex(0)  # Показываем сообщение о входе
+            self.is_admin = False
 
     def load_weighings_data(self):
         """Загружает данные взвешиваний из базы данных в таблицу"""
@@ -298,7 +312,9 @@ class LeftPanelWidget(QtWidgets.QWidget):
         self._render_table(filtered, total_all=len(self.all_weighings))
 
     def _render_table(self, weighings, total_all=None):
+        self.updating_table = True
         self.table.setRowCount(len(weighings))
+        self.displayed_weighings = weighings  # сохраняем для редактирования
         headers = [
             "Дата/Время",
             "Масса",
@@ -327,8 +343,10 @@ class LeftPanelWidget(QtWidgets.QWidget):
                 comment
             ]
             for col_idx, item in enumerate(row_data):
-                self.table.setItem(row_idx, col_idx, QtWidgets.QTableWidgetItem(str(item)))
+                table_item = QtWidgets.QTableWidgetItem(str(item))
+                self.table.setItem(row_idx, col_idx, table_item)
 
+        self.updating_table = False
         displayed = len(weighings)
         total = total_all if total_all is not None else displayed
         status_text = f"Отображаются записи: {displayed} из {total}, выбрано: 0"
@@ -365,3 +383,54 @@ class LeftPanelWidget(QtWidgets.QWidget):
     def refresh_weighings_data(self):
         """Обновляет данные в таблице (вызывается при добавлении нового взвешивания)"""
         self.load_weighings_data()
+
+    def on_item_changed(self, item):
+        """Обработчик изменения ячейки таблицы (только для админа)"""
+        if not self.is_admin or self.updating_table:
+            return
+
+        row = item.row()
+        col = item.column()
+        new_value = item.text()
+
+        # Получаем оригинальные данные для обновления в БД
+        if hasattr(self, 'displayed_weighings') and row < len(self.displayed_weighings):
+            original_row = self.displayed_weighings[row]
+            # original_row: (datetime, weight, operator, weighing_mode, cargo_name, sender, recipient, comment, scales_name)
+
+            # Определяем, какое поле обновляем
+            field_map = {
+                0: 'datetime',
+                1: 'weight',
+                2: 'operator',
+                3: 'weighing_mode',
+                4: 'cargo_name',
+                5: 'sender',
+                6: 'recipient',
+                7: 'comment',
+                8: 'scales_name'
+            }
+
+            if col in field_map:
+                field = field_map[col]
+                # Получаем ID записи для обновления
+                conn = sqlite3.connect('weights_journal.db')
+                cursor = conn.cursor()
+
+                # Найти ID по оригинальным данным
+                cursor.execute('''
+                    SELECT id FROM weighings
+                    WHERE datetime=? AND weight=? AND operator=?
+                ''', (original_row[0], original_row[1], original_row[2]))
+
+                result = cursor.fetchone()
+                if result:
+                    record_id = result[0]
+                    # Обновляем поле
+                    cursor.execute(f'UPDATE weighings SET {field}=? WHERE id=?', (new_value, record_id))
+                    conn.commit()
+                    print(f"Обновлено поле {field} для записи ID {record_id}: {new_value}")
+                else:
+                    print("Не удалось найти запись для обновления")
+
+                conn.close()

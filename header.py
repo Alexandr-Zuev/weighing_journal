@@ -8,6 +8,8 @@ class HeaderWidget(QtWidgets.QWidget):
     login_clicked = QtCore.pyqtSignal()
     logout_clicked = QtCore.pyqtSignal()
     add_scales_clicked = QtCore.pyqtSignal()
+    user_management_clicked = QtCore.pyqtSignal()
+    delete_record_clicked = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,20 +31,25 @@ class HeaderWidget(QtWidgets.QWidget):
 
         # Левый блок - логотип и кнопки объединены
         left_widget = QtWidgets.QWidget()
+        # Загружаем шрифт NotoSans-Regular.ttf
+        font_id = QtGui.QFontDatabase.addApplicationFont("static/NotoSans-Regular.ttf")
+        font_families = QtGui.QFontDatabase.applicationFontFamilies(font_id)
+        header_font_family = font_families[0] if font_families else "Arial, Helvetica, sans-serif"
+
         # Стилизация для flat-кнопок с эффектом изменения фона при наведении
-        left_widget.setStyleSheet("""
-            QPushButton {
+        left_widget.setStyleSheet(f"""
+            QPushButton {{
                 border: none;
                 background: transparent;
                 text-decoration: none;
                 font-size: 12pt;  /* Увеличенный размер шрифта */
-                font-family: Arial, Helvetica, sans-serif;  /* Шрифт Arial, Helvetica */
+                font-family: {header_font_family};  /* Шрифт NotoSans-Regular */
                 padding: 8px 12px;
                 border-radius: 4px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #e5e7eb;
-            }
+            }}
         """)
         left_layout = QtWidgets.QHBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -124,9 +131,15 @@ class HeaderWidget(QtWidgets.QWidget):
         self.scales_config_action.triggered.connect(self.system_clicked.emit)
         self.settings_menu.addAction(self.scales_config_action)
 
-        self.printer_config_action = QtWidgets.QAction("Подключение к термопринтеру", self)
+        self.printer_config_action = QtWidgets.QAction("Подключение к термопринтеру RD-V2", self)
         self.printer_config_action.triggered.connect(self.printer_config_clicked.emit)
         self.settings_menu.addAction(self.printer_config_action)
+
+        # Добавляем пункт управления пользователями (только для админа)
+        self.user_management_action = QtWidgets.QAction("Управление пользователями", self)
+        self.user_management_action.triggered.connect(self.user_management_clicked.emit)
+        self.user_management_action.setVisible(False)  # по умолчанию скрыт
+        self.settings_menu.addAction(self.user_management_action)
 
         # Подключаем меню к кнопке
         self.btn_settings.setMenu(self.settings_menu)
@@ -169,9 +182,59 @@ class HeaderWidget(QtWidgets.QWidget):
         # Подключаем меню к кнопке
         self.btn_help.setMenu(self.help_menu)
 
+        # Кнопка управления пользователями (только для админа)
+        self.btn_user_management = QtWidgets.QPushButton("Управление пользователями")
+        self.btn_user_management.setFlat(True)  # Убираем стандартный вид кнопки
+        # Добавляем иконку
+        user_management_icon = QtGui.QIcon("static/manage_group.svg")
+        self.btn_user_management.setIcon(user_management_icon)
+        self.btn_user_management.setIconSize(QtCore.QSize(20, 20))
+        self.btn_user_management.setStyleSheet(f"""
+            QPushButton {{
+                border: none;
+                background: transparent;
+                text-decoration: none;
+                font-size: 12pt;
+                font-family: {header_font_family};
+                padding: 8px 12px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: #e5e7eb;
+            }}
+        """)
+        self.btn_user_management.setVisible(False)  # по умолчанию скрыта
+        self.btn_user_management.clicked.connect(self.user_management_clicked.emit)
+
         left_layout.addWidget(self.btn_file)
         left_layout.addWidget(self.btn_settings)
         left_layout.addWidget(self.btn_help)
+        left_layout.addWidget(self.btn_user_management)
+
+        # Кнопка удаления записи (только для админа)
+        self.btn_delete_record = QtWidgets.QPushButton("Удалить запись")
+        self.btn_delete_record.setFlat(True)  # Убираем стандартный вид кнопки
+        # Добавляем иконку
+        delete_icon = QtGui.QIcon("static/delete_str.svg")
+        self.btn_delete_record.setIcon(delete_icon)
+        self.btn_delete_record.setIconSize(QtCore.QSize(20, 20))
+        self.btn_delete_record.setStyleSheet(f"""
+            QPushButton {{
+                border: none;
+                background: transparent;
+                text-decoration: none;
+                font-size: 12pt;
+                font-family: {header_font_family};
+                padding: 8px 12px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: #e5e7eb;
+            }}
+        """)
+        self.btn_delete_record.setVisible(False)  # по умолчанию скрыта
+        self.btn_delete_record.clicked.connect(self.delete_record_clicked.emit)
+        left_layout.addWidget(self.btn_delete_record)
 
         top_layout.addWidget(left_widget, alignment=QtCore.Qt.AlignLeft)
 
@@ -194,7 +257,7 @@ class HeaderWidget(QtWidgets.QWidget):
 
         # Добавляем надпись "Пользователь:" слева от кнопки пользователя
         self.user_label = QtWidgets.QLabel("Пользователь:")
-        self.user_label.setStyleSheet("font-size: 11pt; margin-right: 0px;")
+        self.user_label.setStyleSheet(f"font-size: 11pt; margin-right: 0px; font-family: {header_font_family};")
         self.user_label.setVisible(False)  # по умолчанию скрыта
         right_layout.addWidget(self.user_label)
 
@@ -203,13 +266,13 @@ class HeaderWidget(QtWidgets.QWidget):
         # Увеличиваем размер иконки пользователя еще больше
         self.user_button.setIconSize(QtCore.QSize(40, 40))  # Максимальный размер иконки
         self.user_button.setIcon(user_icon)
-        self.user_button.setStyleSheet("font-size: 11pt; margin-left: 0px;")
+        self.user_button.setStyleSheet(f"font-size: 11pt; margin-left: 0px; font-family: {header_font_family};")
         self.user_button.clicked.connect(self.login_clicked.emit)
         right_layout.addWidget(self.user_button)
 
         self.logout_button = QtWidgets.QPushButton("Завершить сеанс")
-        self.logout_button.setStyleSheet("font-size: 11pt;")
-        logout_icon = QtGui.QIcon("static/603018.svg")
+        self.logout_button.setStyleSheet(f"font-size: 11pt; font-family: {header_font_family};")
+        logout_icon = QtGui.QIcon("static/logout.svg")
         self.logout_button.setIcon(logout_icon)
         self.logout_button.setIconSize(QtCore.QSize(32, 32))
         self.logout_button.clicked.connect(self.logout_clicked.emit)
@@ -219,12 +282,13 @@ class HeaderWidget(QtWidgets.QWidget):
         top_layout.addWidget(right_widget, alignment=QtCore.Qt.AlignRight)
 
         header_label = QtWidgets.QLabel("ЖУРНАЛ ВЗВЕШИВАНИЙ")
-        header_label.setStyleSheet("""
+        header_label.setStyleSheet(f"""
             background-color: #3a5c7e;
             color: white;
             padding: 8px 16px;
             font-size: 12pt;
             font-weight: 600;
+            font-family: {header_font_family};
         """)
         header_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
 
@@ -242,7 +306,6 @@ class HeaderWidget(QtWidgets.QWidget):
         <div style='text-align: left;'>
             <h3>О программе</h3>
             <p><b>Журнал взвешиваний 2.0</b></p>
-            <p>Web-интерфейс Журнал взвешиваний, версия 0.8.5 от 11.11.2025</p>
             <p>Авторские права © Зуев А.Д.</p>
             <p>ПО "Web-интерфейс Журнал взвешиваний 2.0" предназначено для автоматизации процесса учета взвешивания грузов в складских, производственных и торговых помещениях.</p>
             <p>Локальное хранение всех взвешиваний на рабочем месте клиента.</p>
@@ -255,7 +318,7 @@ class HeaderWidget(QtWidgets.QWidget):
         msg_box.setWindowTitle("О программе")
         msg_box.setText(about_text)
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
-        msg_box.setFixedSize(500, 240)
+        msg_box.setFixedSize(400, 200)
         msg_box.exec_()
 
     def show_license_info(self):
@@ -292,8 +355,7 @@ class HeaderWidget(QtWidgets.QWidget):
         msg_box.setWindowTitle("Лицензия")
         msg_box.setText(license_text)
         msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
-        # Устанавливаем размер по контенту
-        msg_box.adjustSize()
+        msg_box.setFixedSize(400, 200)
         msg_box.exec_()
 
     def set_logged_in_user(self, username):
@@ -302,6 +364,16 @@ class HeaderWidget(QtWidgets.QWidget):
         self.user_label.setVisible(False)      # Скрываем "Пользователь:"
         self.user_button.setVisible(False)     # Скрываем кнопку пользователя
         self.logout_button.setVisible(True)
+
+        # Показываем управление пользователями и удаление записей только для админа
+        if username == "admin":
+            self.user_management_action.setVisible(True)
+            self.btn_user_management.setVisible(True)
+            self.btn_delete_record.setVisible(True)
+        else:
+            self.user_management_action.setVisible(False)
+            self.btn_user_management.setVisible(False)
+            self.btn_delete_record.setVisible(False)
 
     def logout(self):
         self.logged_in_user = None
@@ -317,3 +389,7 @@ class HeaderWidget(QtWidgets.QWidget):
             pass
         self.user_button.clicked.connect(self.login_clicked.emit)
         self.logout_button.setVisible(False)
+        # Скрываем управление пользователями и удаление записей при выходе
+        self.btn_user_management.setVisible(False)
+        self.btn_delete_record.setVisible(False)
+        self.user_management_action.setVisible(False)

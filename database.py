@@ -259,12 +259,21 @@ def save_weighing(datetime_str, weight, operator, weighing_mode='-', cargo_name=
 def get_weighings(operator=None):
     """
     Получает данные взвешиваний из базы данных
-    Если operator указан, возвращает только записи этого оператора
+    Если operator указан и не "admin", возвращает только записи этого оператора
+    Для admin возвращает все записи
     """
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    
-    if operator:
+
+    if operator == "admin":
+        # Admin видит все записи
+        cursor.execute('''
+            SELECT datetime, weight, operator, weighing_mode, cargo_name,
+                   sender, recipient, comment, scales_name
+            FROM weighings
+            ORDER BY id DESC
+        ''')
+    elif operator:
         cursor.execute('''
             SELECT datetime, weight, operator, weighing_mode, cargo_name,
                    sender, recipient, comment, scales_name
@@ -279,7 +288,7 @@ def get_weighings(operator=None):
             FROM weighings
             ORDER BY id DESC
         ''')
-    
+
     rows = cursor.fetchall()
     conn.close()
     return rows

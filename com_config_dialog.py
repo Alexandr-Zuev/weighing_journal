@@ -33,7 +33,7 @@ class ComConfigDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.username = username
         self.setWindowTitle("Настройка COM-порта")
-        self.resize(600, 300)
+        self.setFixedSize(600, 300)
 
         main_layout = QtWidgets.QVBoxLayout(self)
 

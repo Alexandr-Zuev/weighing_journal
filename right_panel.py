@@ -1,157 +1,13 @@
 import sqlite3
-import re
 import time
 from datetime import datetime
 from PyQt5 import QtWidgets, QtCore, QtGui
-import serial  # pyserial, установить через pip install pyserial
-from database import save_weighing
-
+from weight_display_controller import WeightDisplayController
+from weight_reader import WeightReader
+from auto_weighing_engine import AutoWeighingEngine
+from weighing_service import WeighingService
 
 DB_FILE = 'weights_journal.db'
-
-
-class WeightDisplayManager:
-    """Управление отображением веса с оптимизированной производительностью"""
-
-    def __init__(self, weight_label, status_label, font_family="DSEG7Classic-Regular"):
-        self.weight_label = weight_label
-        self.status_label = status_label
-        self.font_family = font_family
-
-        # Параметры отображения
-        self.min_font_size = 22
-        self.max_font_size = 42
-        self.font_size_step = 4
-
-        # Кэшированные стили для разных размеров шрифта
-        self.font_styles_cache = {}
-        self._init_font_styles()
-
-        # Предыдущие значения для оптимизации
-        self.last_weight_text = None
-        self.last_font_size = self.max_font_size
-
-        # Настройка метки веса
-        self._setup_weight_label()
-
-    def _init_font_styles(self):
-        """Инициализирует кэш стилей шрифта для разных размеров"""
-        base_style = f"font-size: {{}}pt; background: transparent; border: none; margin-top: 15px; margin-left: 15px;"
-
-        for size in range(self.min_font_size, self.max_font_size + 1, self.font_size_step):
-            self.font_styles_cache[size] = base_style.format(size)
-
-    def _setup_weight_label(self):
-        """Настраивает метку веса для оптимального отображения"""
-        if not self.weight_label:
-            return
-
-        try:
-            # Устанавливаем начальный шрифт и стиль
-            font = QtGui.QFont(self.font_family)
-            self.weight_label.setFont(font)
-            self.weight_label.setText("-")
-            self.weight_label.setStyleSheet(self.font_styles_cache[self.max_font_size])
-        except Exception:
-            pass  # Игнорируем ошибки инициализации
-
-    def update_weight(self, weight_value):
-        """Обновляет отображение веса с оптимизацией производительности"""
-        if not self._validate_weight_label():
-            return
-
-        try:
-            # Проверяем, изменился ли вес
-            weight_text = f"{weight_value:.1f}" if weight_value >= 0 else "-"
-
-            # Выходим если значение не изменилось
-            if weight_text == self.last_weight_text:
-                return
-
-            self.last_weight_text = weight_text
-
-            # Определяем оптимальный размер шрифта
-            optimal_font_size = self._calculate_font_size(weight_text)
-            self._apply_font_size(optimal_font_size)
-
-            # Обновляем текст
-            self.weight_label.setText(weight_text)
-
-        except Exception:
-            # В случае ошибки устанавливаем дефолтное значение
-            self._set_error_state()
-
-    def _validate_weight_label(self):
-        """Проверяет валидность метки веса"""
-        return (self.weight_label and
-                hasattr(self.weight_label, 'setText') and
-                hasattr(self.weight_label, 'setStyleSheet'))
-
-    def _calculate_font_size(self, weight_text):
-        """Вычисляет оптимальный размер шрифта для текста веса"""
-        text_length = len(weight_text)
-
-        if text_length <= 4:  # "1.0", "12.5"
-            return self.max_font_size
-        elif text_length <= 5:  # "123.4"
-            return self.max_font_size - self.font_size_step
-        elif text_length <= 6:  # "1234.5"
-            return self.max_font_size - (self.font_size_step * 2)
-        elif text_length <= 7:  # "12345.6"
-            return self.max_font_size - (self.font_size_step * 3)
-        elif text_length <= 8:  # "123456.7"
-            return self.max_font_size - (self.font_size_step * 4)
-        else:  # Очень большие значения
-            return self.min_font_size
-
-    def _apply_font_size(self, font_size):
-        """Применяет размер шрифта с использованием кэша"""
-        if font_size == self.last_font_size:
-            return
-
-        self.last_font_size = font_size
-
-        try:
-            cached_style = self.font_styles_cache.get(font_size)
-            if cached_style:
-                self.weight_label.setStyleSheet(cached_style)
-        except Exception:
-            pass  # Игнорируем ошибки применения стиля
-
-    def _set_error_state(self):
-        """Устанавливает состояние ошибки"""
-        try:
-            if self._validate_weight_label():
-                self.weight_label.setText("-")
-                self.weight_label.setStyleSheet(self.font_styles_cache[self.max_font_size])
-                self.last_weight_text = None
-        except Exception:
-            pass
-
-    def reset(self):
-        """Сбрасывает состояние дисплея веса"""
-        self.last_weight_text = None
-        self.last_font_size = self.max_font_size
-        self._set_error_state()
-
-    def update_connection_status(self, is_connected, port=None, baud=None):
-        """Обновляет статус подключения"""
-        try:
-            if not self.status_label:
-                return
-
-            if is_connected and port:
-                second_line = f"{port}"
-                if baud:
-                    second_line = f"{second_line}, {baud}"
-                text = f"Прием данных...Ок\n{second_line}"
-            else:
-                text = "Прием данных...None\n-"
-
-            self.status_label.setText(text)
-        except Exception:
-            pass  # Игнорируем ошибки обновления статуса
-
 
 class RightPanelWidget(QtWidgets.QWidget):
     # Сигнал для уведомления о новом взвешивании
@@ -171,28 +27,25 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.show_info_block = show_info_block
         self.printer_manager = None  # Менеджер термопринтера
 
-        # Переменные для автоматического взвешивания
-        self.last_weight = None
-        self.last_weight_time = None
-        self.stable_weight_duration = 0.0
-        self.last_saved_weight = None
-        self.weight_was_zero = True  # Флаг, что вес был сброшен на ноль
-
+        # Инициализируем компоненты
+        self.weight_reader = WeightReader()
+        self.auto_weighing_engine = AutoWeighingEngine(user=self.current_user, scales_name=self.current_config_name)
+        self.weighing_service = WeighingService()
 
         # Оптимизация обновления интерфейса
         self.last_ui_update = 0.0
         self.ui_update_interval = 100  # Обновляем интерфейс раз в 100мс для баланса производительности
 
-        # Убираем старую переменную для статуса веса - теперь в WeightDisplayManager
-
         # Оптимизация автоматического взвешивания
         self.last_auto_weigh_call = 0.0
         self.auto_weigh_interval = 100  # Интервал вызовов автоматического взвешивания (мс) для более быстрой реакции
 
-        # Дополнительные настройки автоматического взвешивания
-        self.min_weight_threshold = 0.1  # Минимальный вес для срабатывания (кг)
-        self.max_weight_threshold = 100000  # Максимальный вес для предотвращения ошибок (кг)
-        self.auto_save_timeout = 30.0  # Таймаут для автоматического сохранения (секунды)
+        # Механизм повторных попыток подключения
+        self.connection_retry_count = 0
+        self.max_connection_retries = 3
+        self.connection_retry_delay = 2000  # мс, задержка между попытками
+        self.last_connection_attempt = 0.0
+        self.connection_lost = False
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -242,25 +95,21 @@ class RightPanelWidget(QtWidgets.QWidget):
 
         # Кнопка удаления (крестик) - показываем только если это не первый блок весов
         if scales_number > 1:
-            delete_button = QtWidgets.QPushButton("×")
-            delete_button.setFixedSize(20, 20)
+            delete_button = QtWidgets.QPushButton()
+            delete_icon = QtGui.QIcon("static/delete.svg")
+            delete_button.setIcon(delete_icon)
+            delete_button.setIconSize(QtCore.QSize(30, 30))
+            delete_button.setFixedSize(30, 30)
             # Центрируем текст в кнопке
             delete_button.setStyleSheet("""
                 QPushButton {
-                    background-color: #dc2626;
-                    color: white;
+                    background-color: transparent;
                     border: none;
-                    border-radius: 10px;
-                    font-family: "Courier New", monospace;
-                    font-size: 18px;
-                    font-weight: bold;
-                    padding: 0px;
-                    margin: 0px;
-                    text-align: center;
-                    line-height: 20px;
+                    border-radius: 3px;
+                    padding: 2px;
                 }
                 QPushButton:hover {
-                    background-color: #b91c1c;
+                    background-color: #fecaca;
                 }
             """)
             delete_button.setToolTip("Удалить весы")
@@ -406,7 +255,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         left_layout.setSpacing(8)
 
         self.save_weight_button = QtWidgets.QPushButton("Сохранить вес")
-        icon = QtGui.QIcon("static/705e3.svg")
+        icon = QtGui.QIcon("static/save_ves.svg")
         self.save_weight_button.setIcon(icon)
         self.save_weight_button.setIconSize(QtCore.QSize(32, 32))
         self.save_weight_button.setStyleSheet("""
@@ -550,7 +399,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         # Таймер для чтения и эмуляции веса с обновлением информации
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.read_or_simulate_weight)
-        self.timer.start(50)  # Уменьшаем интервал до 50мс для более быстрого чтения данных
+        self.timer.start(100)  # Уменьшаем интервал до 50мс для более быстрого чтения данных
 
 
         # Связываем кнопки с методами
@@ -566,7 +415,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         # Проверяем видимость блока веса при инициализации
 
         # Инициализируем менеджер отображения веса
-        self.weight_display_manager = WeightDisplayManager(
+        self.weight_display_manager = WeightDisplayController(
             self.weight_label, self.status_label, font_family
         )
 
@@ -686,19 +535,19 @@ class RightPanelWidget(QtWidgets.QWidget):
 
         port, baud, protocol = row
         baud = int(baud)
-        try:
-            if self.serial_port and self.serial_port.is_open:
-                self.serial_port.close()
-            self.serial_port = serial.Serial(port=port, baudrate=baud, timeout=1)
+
+        # Используем WeightReader для подключения
+        success, message = self.weight_reader.connect(port, baud)
+        if success:
             self.timer.start(50)
             QtWidgets.QMessageBox.information(self, "Подключено",
                                                f"Подключение к {port} с скоростью {baud} успешно установлено.")
             self.update_connection_status(True, port, baud)
             # Сохраняем выбранный протокол для чтения
+            self.weight_reader.set_protocol(int(protocol) if protocol else 1)
             self.current_protocol = int(protocol) if protocol else 1
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Ошибка подключения", str(e))
-            self.serial_port = None
+        else:
+            QtWidgets.QMessageBox.critical(self, "Ошибка подключения", message)
             self.update_connection_status(False)
             # Проверяем что weight_label существует перед установкой текста
             if self.weight_label and hasattr(self.weight_label, 'setText'):
@@ -706,23 +555,19 @@ class RightPanelWidget(QtWidgets.QWidget):
 
     def on_disconnect_clicked(self):
         self.timer.stop()
-        try:
-            if self.serial_port and self.serial_port.is_open:
-                self.serial_port.close()
-                QtWidgets.QMessageBox.information(self, "Отключено", "COM-порт успешно отключен.")
-            else:
-                QtWidgets.QMessageBox.information(self, "Информация", "COM-порт не был подключен.")
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(self, "Ошибка", f"Ошибка при отключении: {e}")
-        self.serial_port = None
+        self.weight_reader.disconnect()
+        QtWidgets.QMessageBox.information(self, "Отключено", "COM-порт успешно отключен.")
         self.current_config_name = None
-        
-        # Сброс переменных автоматического взвешивания
-        self._reset_auto_weighing_state()
+
+        # Сброс состояний
+        self.auto_weighing_engine.reset_state()
         self.last_ui_update = 0.0
         self.last_auto_weigh_call = 0.0
 
-        
+        # Сброс счетчиков попыток переподключения
+        self.connection_retry_count = 0
+        self.connection_lost = False
+
         self.update_connection_status(False)
         # Сбрасываем отображение веса при отключении
         if hasattr(self, 'weight_display_manager'):
@@ -730,34 +575,37 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.update_info_display()
 
     def read_or_simulate_weight(self):
-        current_time = time.time() * 1000  # мс
+        try:
+            current_time = time.time() * 1000  # мс
 
-        # Оптимизированное обновление интерфейса - только раз в секунду
-        if current_time - self.last_ui_update > self.ui_update_interval:
-            self.update_info_display()
-            self.last_ui_update = current_time
+            # Оптимизированное обновление интерфейса - только раз в секунду
+            if current_time - self.last_ui_update > self.ui_update_interval:
+                self.update_info_display()
+                self.last_ui_update = current_time
 
-        # Читаем данные из порта и сразу отображаем вес
-        if self.serial_port and self.serial_port.in_waiting:
-            try:
-                # Читаем все доступные строки
-                while self.serial_port.in_waiting:
-                    raw_bytes = self.serial_port.readline()
-                    if raw_bytes:
-                        raw_string = raw_bytes.decode('utf-8').strip()
-                        weight_value = self.parse_weight_from_raw(raw_string)
-                        if weight_value is not None and isinstance(weight_value, (int, float)) and weight_value >= 0:
-                            # Сразу отображаем вес без буферизации
-                            self._update_weight_display(weight_value)
+            # Читаем данные из порта и сразу отображаем вес
+            weight_value = self.weight_reader.read_weight()
+            if weight_value is not None:
+                # Сбрасываем счетчик попыток при успешном чтении
+                self.connection_retry_count = 0
+                self.connection_lost = False
 
-                            # Обрабатываем автоматическое взвешивание с ограничением частоты вызовов
-                            current_time = time.time() * 1000  # мс
-                            if current_time - self.last_auto_weigh_call > self.auto_weigh_interval:
-                                self.process_auto_weighing(weight_value)
-                                self.last_auto_weigh_call = current_time
+                # Сразу отображаем вес без буферизации
+                self._update_weight_display(weight_value)
 
-            except Exception as e:
-                print("Ошибка чтения с COM-порта:", e)
+                # Обрабатываем автоматическое взвешивание с ограничением частоты вызовов
+                current_time = time.time() * 1000  # мс
+                if current_time - self.last_auto_weigh_call > self.auto_weigh_interval:
+                    self.process_auto_weighing(weight_value)
+                    self.last_auto_weigh_call = current_time
+            else:
+                # Если не удалось прочитать вес, проверяем на разрыв соединения
+                self._handle_connection_loss()
+
+        except Exception as e:
+            # Логируем ошибку и обрабатываем разрыв соединения
+            print(f"Ошибка в read_or_simulate_weight: {str(e)}")
+            self._handle_connection_loss()
 
 
     def _update_weight_display(self, weight_value):
@@ -787,52 +635,87 @@ class RightPanelWidget(QtWidgets.QWidget):
         except (AttributeError, RuntimeError):
             pass
 
+    def _handle_connection_loss(self):
+        """Обрабатывает потерю соединения и пытается восстановить подключение"""
+        if not self.connection_lost:
+            self.connection_lost = True
+            print("Соединение с весами потеряно, начинаем попытки переподключения...")
+            self.update_connection_status(False)
+
+        # Проверяем, можно ли начать новую попытку переподключения
+        current_time = time.time() * 1000
+        if current_time - self.last_connection_attempt > self.connection_retry_delay:
+            if self.connection_retry_count < self.max_connection_retries:
+                self.connection_retry_count += 1
+                self.last_connection_attempt = current_time
+                print(f"Попытка переподключения #{self.connection_retry_count}")
+
+                # Пытаемся переподключиться
+                try:
+                    if self.current_config_name and self.current_user:
+                        conn = sqlite3.connect(DB_FILE)
+                        cursor = conn.cursor()
+                        cursor.execute('''
+                            SELECT port, baud, COALESCE(protocol, 1)
+                            FROM com_configurations
+                            WHERE username=? AND name=?
+                        ''', (self.current_user, self.current_config_name))
+                        row = cursor.fetchone()
+                        conn.close()
+
+                        if row:
+                            port, baud, protocol = row
+                            success, message = self.weight_reader.connect(port, int(baud))
+                            if success:
+                                print("Переподключение успешно!")
+                                self.timer.start(50)
+                                self.update_connection_status(True, port, int(baud))
+                                self.weight_reader.set_protocol(int(protocol) if protocol else 1)
+                                self.current_protocol = int(protocol) if protocol else 1
+                                # Сбрасываем счетчики при успешном переподключении
+                                self.connection_retry_count = 0
+                                self.connection_lost = False
+                                return
+                            else:
+                                print(f"Попытка переподключения #{self.connection_retry_count} не удалась: {message}")
+                        else:
+                            print("Не удалось получить конфигурацию для переподключения")
+                    else:
+                        print("Отсутствует конфигурация или пользователь для переподключения")
+                except Exception as e:
+                    print(f"Ошибка при попытке переподключения: {str(e)}")
+
+                # Если все попытки исчерпаны
+                if self.connection_retry_count >= self.max_connection_retries:
+                    print("Все попытки переподключения исчерпаны")
+                    self.timer.stop()  # Останавливаем таймер для предотвращения дальнейших зависаний
+                    # Можно добавить уведомление пользователю здесь
+            else:
+                # Все попытки исчерпаны, останавливаемся
+                pass
+
     def process_auto_weighing(self, current_weight):
         """Обрабатывает логику автоматического взвешивания"""
         # Проверяем, включено ли автоматическое взвешивание
         if not self.auto_weight_checkbox.isChecked():
             return
 
-        # Проверяем, авторизован ли пользователь
-        if not self.current_user:
-            return
-
-        current_time = time.time()
-
-        # Если вес равен нулю, устанавливаем флаг сброса
-        if current_weight == 0:
-            self.weight_was_zero = True
-            self.last_weight = None
-            self.last_weight_time = None
-            self.stable_weight_duration = 0
-            return
-
-        # Если вес не был сброшен на ноль после последнего сохранения, игнорируем
-        if not self.weight_was_zero and self.last_saved_weight is not None:
-            return
-
-        # Получаем интервал стабилизации
+        # Обновляем настройки стабилизации
         try:
             stabilization_interval = int(self.interval_input.text())
+            self.auto_weighing_engine.set_stabilization_interval(stabilization_interval)
         except ValueError:
-            stabilization_interval = 5  # По умолчанию 5 секунд
+            pass  # Используем значение по умолчанию
 
-        # Если это новый вес или вес изменился
-        if self.last_weight != current_weight:
-            self.last_weight = current_weight
-            self.last_weight_time = current_time
-            self.stable_weight_duration = 0
-        else:
-            # Вес не изменился, увеличиваем время стабилизации
-            if self.last_weight_time is not None:
-                self.stable_weight_duration = current_time - self.last_weight_time
+        # Обрабатываем вес через движок автоматического взвешивания
+        should_save, status_message = self.auto_weighing_engine.process_weight(current_weight)
 
-        # Если вес стабилен в течение заданного интервала и больше нуля
-        if (self.stable_weight_duration >= stabilization_interval and
-            current_weight > 0 and
-            self.weight_was_zero):
+        if should_save:
+            # Автоматическая чекопечать если включена
+            if self.receipt_checkbox.isChecked():
+                self._perform_auto_print_receipt(current_weight)
 
-            self.auto_save_weight(current_weight)
+            print(f"Автоматически сохранен вес: {current_weight} кг")
 
     def _reset_auto_weighing_state(self):
         """Сбрасывает состояние автоматического взвешивания"""
@@ -867,70 +750,41 @@ class RightPanelWidget(QtWidgets.QWidget):
 
         return weight_changed
 
-    def auto_save_weight(self, weight):
-        """Автоматически сохраняет вес"""
+    def _perform_auto_print_receipt(self, weight):
+        """Выполняет автоматическую печать чека"""
         try:
-            # Получаем текущую дату и время
+            # Получаем данные для чека
             current_datetime = datetime.now().strftime("%d.%m.%Y %H:%M")
-
-            # Получаем данные из полей ввода
             cargo_name = self.input_cargo_name.text().strip() or '-'
             sender = self.input_sender.text().strip() or '-'
             recipient = self.input_recipient.text().strip() or '-'
             comment = self.input_comment.toPlainText().strip() or '-'
-
-            # Получаем название весов
             scales_name = self.current_config_name or '-'
 
-            # Сохраняем в базу данных
-            save_weighing(
-                datetime_str=current_datetime,
-                weight=weight,
-                operator=self.current_user,
-                weighing_mode='Автоматическое',
-                cargo_name=cargo_name,
-                sender=sender,
-                recipient=recipient,
-                comment=comment,
-                scales_name=scales_name
-            )
+            receipt_data = {
+                "datetime": current_datetime,
+                "weight": str(weight),
+                "operator": self.current_user,
+                "mode": "Автоматическое",
+                "name": cargo_name,
+                "warehouse": scales_name,
+                "sender": sender,
+                "receiver": recipient,
+                "notes": comment
+            }
 
-            # Устанавливаем флаги для предотвращения повторного сохранения
-            self.last_saved_weight = weight
-            self.weight_was_zero = False
-
-            # Уведомляем левую панель о новом взвешивании
-            self.weighing_saved.emit()
-
-            print(f"Автоматически сохранен вес: {weight} кг")
-
-            # Автоматическая чекопечать если включена
-            if self.receipt_checkbox.isChecked():
-                # Получаем данные для чека
-                receipt_data = {
-                    "datetime": current_datetime,
-                    "weight": str(weight),
-                    "operator": self.current_user,
-                    "mode": "Автоматическое",
-                    "name": cargo_name,
-                    "warehouse": scales_name,
-                    "sender": sender,
-                    "receiver": recipient,
-                    "notes": comment
-                }
-
-                # Используем переданный printer_manager
-                if hasattr(self, 'printer_manager') and self.printer_manager:
-                    success, message = self.printer_manager.print_receipt(receipt_data)
-                    if success:
-                        print(f"Чек автоматически распечатан: {weight} кг")
-                    else:
-                        print(f"Ошибка при автоматической чекопечати: {message}")
+            # Используем переданный printer_manager
+            if hasattr(self, 'printer_manager') and self.printer_manager:
+                success, message = self.printer_manager.print_receipt(receipt_data)
+                if success:
+                    print(f"Чек автоматически распечатан: {weight} кг")
                 else:
-                    print("Ошибка: менеджер термопринтера не доступен")
+                    print(f"Ошибка при автоматической чекопечати: {message}")
+            else:
+                print("Ошибка: менеджер термопринтера не доступен")
 
         except Exception as e:
-            print(f"Ошибка при автоматическом сохранении: {str(e)}")
+            print(f"Ошибка при автоматической печати чека: {str(e)}")
 
     def _validate_auto_save_data(self, weight):
         """Проверяет валидность данных для автоматического сохранения"""
@@ -997,7 +851,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         if not self.current_user:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Для сохранения веса необходимо авторизоваться.")
             return
-        
+
         # Получаем текущий вес
         try:
             # Проверяем что weight_label существует и не удален
@@ -1020,45 +874,37 @@ class RightPanelWidget(QtWidgets.QWidget):
         except (ValueError, RuntimeError):
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удается получить значение веса.")
             return
-        
-        # Получаем текущую дату и время
-        current_datetime = datetime.now().strftime("%d.%m.%Y %H:%M")
-        
+
         # Получаем данные из полей ввода
         cargo_name = self.input_cargo_name.text().strip() or '-'
         sender = self.input_sender.text().strip() or '-'
         recipient = self.input_recipient.text().strip() or '-'
         comment = self.input_comment.toPlainText().strip() or '-'
-        
+
         # Получаем название весов
         scales_name = self.current_config_name or '-'
-        
-        try:
-            # Сохраняем в базу данных
-            save_weighing(
-                datetime_str=current_datetime,
-                weight=weight,
-                operator=self.current_user,
-                weighing_mode='Ручное',
-                cargo_name=cargo_name,
-                sender=sender,
-                recipient=recipient,
-                comment=comment,
-                scales_name=scales_name
-            )
-            
-            
+
+        # Используем WeighingService для сохранения
+        success = self.weighing_service.save_manual_weighing(
+            weight=weight,
+            operator=self.current_user,
+            cargo_name=cargo_name,
+            sender=sender,
+            recipient=recipient,
+            comment=comment,
+            scales_name=scales_name
+        )
+
+        if success:
             # Устанавливаем флаги для автоматического взвешивания
-            self.last_saved_weight = weight
-            self.weight_was_zero = False
-            
+            self.auto_weighing_engine.reset_state()
+
             # Уведомляем левую панель о новом взвешивании
             self.weighing_saved.emit()
-            
+
             QtWidgets.QMessageBox.information(self, "Успех", f"Вес {weight} кг успешно сохранен.")
-            
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Ошибка", f"Ошибка при сохранении: {str(e)}")
+        else:
+            QtWidgets.QMessageBox.critical(self, "Ошибка", "Ошибка при сохранении веса.")
 
 
 
@@ -1077,71 +923,4 @@ class RightPanelWidget(QtWidgets.QWidget):
     
     
 
-    def parse_weight_from_raw(self, raw_string: str):
-        """Парсит строку веса в зависимости от текущего протокола.
-        Протокол 1: строки вида 'ww00020.12kg' -> число 20.12
-        Протокол 2: строки вида 'ST, GS,+000005 kg' -> число 5
-        """
-        if not raw_string or not raw_string.strip():
-            return None
-
-        protocol = getattr(self, 'current_protocol', 1)
-
-        try:
-            if protocol == 2:
-                # Протокол 2: строки вида 'ST, GS,+000005 kg'
-                # Ищем образец с числом и 'kg' в конце, может содержать + и пробелы
-                match = re.search(r'[A-Z]{2},\s*GS,\s*[+\-]?\s*(\d+(?:\.\d+)?)\s*kg', raw_string.strip())
-                if match:
-                    value_str = match.group(1).strip()
-                    try:
-                        value = float(value_str) if '.' in value_str else int(value_str)
-                        return value if value >= 0 else None
-                    except ValueError:
-                        pass
-            else:
-                # Протокол 1: строки вида 'ww00020.12kg' или 'ww 00020.12 kg'
-                # Ищем ww + любое количество цифр + необязательная десятичная часть + kg
-                match = re.search(r'ww\s*(\d+(?:\.\d+)?)\s*kg', raw_string.strip().lower())
-                if match:
-                    value_str = match.group(1).strip()
-                    try:
-                        value = float(value_str) if '.' in value_str else int(value_str)
-                        return value if value >= 0 else None
-                    except ValueError:
-                        pass
-
-                # Альтернативный формат без 'kg' но с 'ww'
-                alt_match = re.search(r'ww\s*(\d+(?:\.\d+)?)', raw_string.strip().lower())
-                if alt_match:
-                    value_str = alt_match.group(1).strip()
-                    try:
-                        value = float(value_str) if '.' in value_str else int(value_str)
-                        return value if value >= 0 else None
-                    except ValueError:
-                        pass
-
-            # Если основные протоколы не сработали, ищем числа с десятичной точкой или запятой
-            # Но только если они выглядят как вес (положительные числа)
-            number_patterns = [
-                r'(\d+(?:[.,]\d+)?)',  # числа с точкой или запятой как разделителем
-            ]
-
-            for pattern in number_patterns:
-                matches = re.findall(pattern, raw_string.strip())
-                for match in matches:
-                    # Заменяем запятую на точку для корректного преобразования
-                    value_str = match.replace(',', '.')
-                    try:
-                        value = float(value_str)
-                        # Проверяем, что это разумное значение веса (не слишком большое)
-                        if 0 <= value <= 100000:  # Разумный предел для веса в кг
-                            return value
-                    except ValueError:
-                        continue
-
-        except Exception:
-            # Игнорируем любые ошибки парсинга
-            pass
-
-        return None
+    # Метод parse_weight_from_raw больше не нужен, так как логика переехала в WeightReader

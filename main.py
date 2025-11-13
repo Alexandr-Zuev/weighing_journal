@@ -9,6 +9,7 @@ from com_config_dialog import ComConfigDialog
 from login_dialog import LoginDialog
 from thermal_printer_manager import ThermalPrinterManager
 from thermal_printer_dialog import ThermalPrinterDialog
+from user_management_dialog import UserManagementDialog
 import csv
 from datetime import datetime
 import license_manager
@@ -67,6 +68,8 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.header.login_clicked.connect(self.open_login_dialog)
         self.header.logout_clicked.connect(self.on_logout)
         self.header.add_scales_clicked.connect(self.add_new_scales)
+        self.header.user_management_clicked.connect(self.open_user_management_dialog)
+        self.header.delete_record_clicked.connect(self.on_delete_record)
         
         # Подключение сигнала сохранения взвешивания к обновлению таблицы
         self.scales_manager.weighing_saved.connect(self.left_panel.refresh_weighings_data)
@@ -404,6 +407,70 @@ class WeighingJournal(QtWidgets.QMainWindow):
         """Открыть диалог настроек термопринтера"""
         dialog = ThermalPrinterDialog(parent=self, printer_manager=self.printer_manager)
         dialog.exec_()
+
+    def open_user_management_dialog(self):
+        """Открыть диалог управления пользователями"""
+        if self.current_user != "admin":
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Только администратор может управлять пользователями.")
+            return
+        dialog = UserManagementDialog(parent=self)
+        dialog.exec_()
+
+    def on_delete_record(self):
+        """Удалить выбранную запись из таблицы"""
+        if self.current_user != "admin":
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Только администратор может удалять записи.")
+            return
+
+        table = self.left_panel.table
+
+        # Получить индексы выделенных строк
+        selected_rows = table.selectionModel().selectedRows() if table.selectionModel() else []
+        if not selected_rows:
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Выберите запись для удаления.")
+            return
+
+        # Подтверждение удаления
+        count = len(selected_rows)
+        message = f"Вы действительно хотите удалить {count} запись(ей)?" if count > 1 else "Вы действительно хотите удалить выбранную запись?"
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            'Подтверждение удаления',
+            message,
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            # Получить данные для удаления из базы
+            import sqlite3
+            conn = sqlite3.connect('weights_journal.db')
+            cursor = conn.cursor()
+
+            deleted_count = 0
+            for index in sorted(selected_rows, reverse=True):
+                row = index.row()
+                # Получить данные из таблицы для идентификации записи
+                datetime_val = table.item(row, 0).text() if table.item(row, 0) else ""
+                weight_val = table.item(row, 1).text() if table.item(row, 1) else ""
+                operator_val = table.item(row, 3).text() if table.item(row, 3) else ""
+
+                # Удалить из базы данных
+                cursor.execute('''
+                    DELETE FROM weighings
+                    WHERE datetime=? AND weight=? AND operator=?
+                ''', (datetime_val, float(weight_val.replace(' кг', '').replace(',', '.')) if weight_val else 0, operator_val))
+
+                deleted_count += cursor.rowcount
+                # Удалить из таблицы
+                table.removeRow(row)
+
+            conn.commit()
+            conn.close()
+
+            QtWidgets.QMessageBox.information(self, "Успех", f"Удалено {deleted_count} запись(ей).")
+            # Обновить сводку
+            self.left_panel.on_selection_changed()
 
     def open_login_dialog(self):
         dialog = LoginDialog(self)
