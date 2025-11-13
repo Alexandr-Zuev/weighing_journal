@@ -40,11 +40,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.last_auto_weigh_call = 0.0
         self.auto_weigh_interval = 100  # Интервал вызовов автоматического взвешивания (мс) для более быстрой реакции
 
-        # Механизм повторных попыток подключения
-        self.connection_retry_count = 0
-        self.max_connection_retries = 3
-        self.connection_retry_delay = 2000  # мс, задержка между попытками
-        self.last_connection_attempt = 0.0
+        # Флаг потери соединения
         self.connection_lost = False
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -564,8 +560,7 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.last_ui_update = 0.0
         self.last_auto_weigh_call = 0.0
 
-        # Сброс счетчиков попыток переподключения
-        self.connection_retry_count = 0
+        # Сброс флага потери соединения
         self.connection_lost = False
 
         self.update_connection_status(False)
@@ -586,8 +581,7 @@ class RightPanelWidget(QtWidgets.QWidget):
             # Читаем данные из порта и сразу отображаем вес
             weight_value = self.weight_reader.read_weight()
             if weight_value is not None:
-                # Сбрасываем счетчик попыток при успешном чтении
-                self.connection_retry_count = 0
+                # Сбрасываем флаг потери соединения при успешном чтении
                 self.connection_lost = False
 
                 # Сразу отображаем вес без буферизации
@@ -636,63 +630,12 @@ class RightPanelWidget(QtWidgets.QWidget):
             pass
 
     def _handle_connection_loss(self):
-        """Обрабатывает потерю соединения и пытается восстановить подключение"""
+        """Обрабатывает потерю соединения с весами"""
         if not self.connection_lost:
             self.connection_lost = True
-            print("Соединение с весами потеряно, начинаем попытки переподключения...")
+            print("Соединение с весами потеряно")
             self.update_connection_status(False)
-
-        # Проверяем, можно ли начать новую попытку переподключения
-        current_time = time.time() * 1000
-        if current_time - self.last_connection_attempt > self.connection_retry_delay:
-            if self.connection_retry_count < self.max_connection_retries:
-                self.connection_retry_count += 1
-                self.last_connection_attempt = current_time
-                print(f"Попытка переподключения #{self.connection_retry_count}")
-
-                # Пытаемся переподключиться
-                try:
-                    if self.current_config_name and self.current_user:
-                        conn = sqlite3.connect(DB_FILE)
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            SELECT port, baud, COALESCE(protocol, 1)
-                            FROM com_configurations
-                            WHERE username=? AND name=?
-                        ''', (self.current_user, self.current_config_name))
-                        row = cursor.fetchone()
-                        conn.close()
-
-                        if row:
-                            port, baud, protocol = row
-                            success, message = self.weight_reader.connect(port, int(baud))
-                            if success:
-                                print("Переподключение успешно!")
-                                self.timer.start(50)
-                                self.update_connection_status(True, port, int(baud))
-                                self.weight_reader.set_protocol(int(protocol) if protocol else 1)
-                                self.current_protocol = int(protocol) if protocol else 1
-                                # Сбрасываем счетчики при успешном переподключении
-                                self.connection_retry_count = 0
-                                self.connection_lost = False
-                                return
-                            else:
-                                print(f"Попытка переподключения #{self.connection_retry_count} не удалась: {message}")
-                        else:
-                            print("Не удалось получить конфигурацию для переподключения")
-                    else:
-                        print("Отсутствует конфигурация или пользователь для переподключения")
-                except Exception as e:
-                    print(f"Ошибка при попытке переподключения: {str(e)}")
-
-                # Если все попытки исчерпаны
-                if self.connection_retry_count >= self.max_connection_retries:
-                    print("Все попытки переподключения исчерпаны")
-                    self.timer.stop()  # Останавливаем таймер для предотвращения дальнейших зависаний
-                    # Можно добавить уведомление пользователю здесь
-            else:
-                # Все попытки исчерпаны, останавливаемся
-                pass
+            self.timer.stop()  # Останавливаем таймер при потере соединения
 
     def process_auto_weighing(self, current_weight):
         """Обрабатывает логику автоматического взвешивания"""

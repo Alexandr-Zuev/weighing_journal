@@ -135,11 +135,7 @@ class HeaderWidget(QtWidgets.QWidget):
         self.printer_config_action.triggered.connect(self.printer_config_clicked.emit)
         self.settings_menu.addAction(self.printer_config_action)
 
-        # Добавляем пункт управления пользователями (только для админа)
-        self.user_management_action = QtWidgets.QAction("Управление пользователями", self)
-        self.user_management_action.triggered.connect(self.user_management_clicked.emit)
-        self.user_management_action.setVisible(False)  # по умолчанию скрыт
-        self.settings_menu.addAction(self.user_management_action)
+        # Кнопка управления пользователями убрана из меню настроек
 
         # Подключаем меню к кнопке
         self.btn_settings.setMenu(self.settings_menu)
@@ -351,12 +347,30 @@ class HeaderWidget(QtWidgets.QWidget):
             </div>
             """
 
-        msg_box = QtWidgets.QMessageBox(self)
-        msg_box.setWindowTitle("Лицензия")
-        msg_box.setText(license_text)
-        msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
-        msg_box.setFixedSize(400, 200)
-        msg_box.exec_()
+        # Используем обычное QDialog вместо QMessageBox для полного контроля размера
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Лицензия")
+        dialog.setFixedSize(400, 200)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        # Метка с текстом лицензии
+        text_label = QtWidgets.QLabel(license_text)
+        text_label.setWordWrap(True)
+        text_label.setTextFormat(QtCore.Qt.RichText)
+        layout.addWidget(text_label)
+
+        # Кнопка OK
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QtWidgets.QPushButton("OK")
+        ok_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(ok_button)
+        button_layout.addStretch()
+
+        layout.addLayout(button_layout)
+
+        dialog.exec_()
 
     def set_logged_in_user(self, username):
         self.logged_in_user = username
@@ -367,11 +381,9 @@ class HeaderWidget(QtWidgets.QWidget):
 
         # Показываем управление пользователями и удаление записей только для админа
         if username == "admin":
-            self.user_management_action.setVisible(True)
             self.btn_user_management.setVisible(True)
             self.btn_delete_record.setVisible(True)
         else:
-            self.user_management_action.setVisible(False)
             self.btn_user_management.setVisible(False)
             self.btn_delete_record.setVisible(False)
 
@@ -392,4 +404,3 @@ class HeaderWidget(QtWidgets.QWidget):
         # Скрываем управление пользователями и удаление записей при выходе
         self.btn_user_management.setVisible(False)
         self.btn_delete_record.setVisible(False)
-        self.user_management_action.setVisible(False)
