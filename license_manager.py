@@ -11,10 +11,10 @@ def get_system_uuid():
     return str(uuid.getnode())
 
 def generate_activation_code():
-    """Генерирует код активации на основе MD5 хэша первых 4 символов UUID системы"""
+    """Генерирует код активации на основе MD5 хэша первых 6 символов UUID системы"""
     system_uuid = get_system_uuid()
-    first_four = system_uuid[:4]
-    hash_object = hashlib.md5(first_four.encode())
+    first_six = system_uuid[:6]
+    hash_object = hashlib.md5(first_six.encode())
     activation_code = hash_object.hexdigest()
     return activation_code
 

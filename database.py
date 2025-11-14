@@ -1,6 +1,11 @@
 import sqlite3
+import logging
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtSerialPort import QSerialPortInfo
+from logger import get_logger
+
+# Настройка логирования для database модуля
+logger = get_logger('database')
 
 
 DB_FILE = 'weights_journal.db'
@@ -81,7 +86,7 @@ def init_db():
             cursor.execute('ALTER TABLE weighings_new RENAME TO weighings')
 
     except Exception as e:
-        print(f"Ошибка миграции базы данных: {e}")
+        logger.error(f"Ошибка миграции базы данных: {e}")
     conn.commit()
     conn.close()
 

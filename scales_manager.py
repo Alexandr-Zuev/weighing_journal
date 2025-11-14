@@ -1,6 +1,11 @@
 import sqlite3
+import logging
 from PyQt5 import QtWidgets, QtCore, QtGui
 from right_panel import RightPanelWidget
+from logger import get_logger
+
+# Настройка логирования для scales_manager модуля
+logger = get_logger('scales_manager')
 
 DB_FILE = 'weights_journal.db'
 
@@ -116,9 +121,13 @@ class ScalesManager(QtWidgets.QWidget):
             if reply != QtWidgets.QMessageBox.Yes:
                 return  # Пользователь отменил удаление
 
-            # Отключаем сигналы перед удалением
-            scales_widget.weighing_saved.disconnect()
-            scales_widget.delete_requested.disconnect()
+            # Отключаем сигналы перед удалением (делается в disconnect_signals)
+            try:
+                scales_widget.weighing_saved.disconnect()
+                scales_widget.delete_requested.disconnect()
+            except (TypeError, RuntimeError):
+                # Сигналы уже отключены
+                pass
 
             # Удаляем из списка и layout
             self.scales_widgets.remove(scales_widget)
@@ -170,3 +179,23 @@ class ScalesManager(QtWidgets.QWidget):
     def get_scales_widgets(self):
         """Возвращает список всех виджетов весов"""
         return self.scales_widgets.copy()
+
+    def disconnect_signals(self):
+        """Отключение всех сигналов для предотвращения memory leaks"""
+        try:
+            # Отключаем сигналы от всех виджетов весов
+            for scales_widget in self.scales_widgets:
+                if hasattr(scales_widget, 'disconnect_signals'):
+                    scales_widget.disconnect_signals()
+                # Отключаем сигналы, которые мы подключили
+                try:
+                    scales_widget.weighing_saved.disconnect()
+                    scales_widget.delete_requested.disconnect()
+                except (TypeError, RuntimeError):
+                    # Сигналы уже отключены или объекты удалены
+                    pass
+
+            # Логируем отключение сигналов только в случае ошибки
+            pass
+        except Exception as e:
+            logger.error(f"Ошибка при отключении сигналов scales_manager: {e}")

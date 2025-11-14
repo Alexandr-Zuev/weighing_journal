@@ -21,7 +21,6 @@ cmd = [
     "--name", "WeighingJournal",
     "--icon", "static/icon.ico",
     "--add-data", "static;static",
-    "--add-data", "DSEG7-Classic;DSEG7-Classic",
     "main.py"
 ]
 

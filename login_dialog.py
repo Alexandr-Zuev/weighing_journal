@@ -13,6 +13,10 @@ def init_user_table():
             password TEXT NOT NULL
         )
     ''')
+    # Создаем администратора при первом запуске
+    cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", ("admin",))
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "admin"))
     conn.commit()
     conn.close()
 

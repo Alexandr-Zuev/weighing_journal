@@ -1,4 +1,9 @@
+import logging
 from datetime import datetime
+from logger import get_logger
+
+# Настройка логирования для weighing_service модуля
+logger = get_logger('weighing_service')
 from typing import Optional, Dict, Any
 from database import save_weighing
 
@@ -51,7 +56,7 @@ class WeighingService:
             )
             return True
         except Exception as e:
-            print(f"Ошибка при сохранении ручного взвешивания: {str(e)}")
+            logger.error(f"Ошибка при сохранении ручного взвешивания: {str(e)}")
             return False
 
     def _validate_weighing_data(self, weight: float, operator: str) -> bool:

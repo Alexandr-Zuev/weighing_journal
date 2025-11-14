@@ -1,6 +1,11 @@
 import time
+import logging
 from PyQt5 import QtGui
 from typing import Optional, Tuple
+from logger import get_logger
+
+# Настройка логирования для weight_display_controller модуля
+logger = get_logger('weight_display_controller')
 
 
 class WeightDisplayController:
@@ -130,7 +135,8 @@ class WeightDisplayController:
     def update_connection_status(self, is_connected: bool, port: Optional[str] = None, baud: Optional[int] = None):
         """Обновляет статус подключения"""
         try:
-            if not self.status_label:
+            # Проверяем, что объект еще существует
+            if not hasattr(self, 'status_label') or self.status_label is None:
                 return
 
             if is_connected and port:
@@ -142,5 +148,6 @@ class WeightDisplayController:
                 text = "Прием данных...None\n-"
 
             self.status_label.setText(text)
-        except Exception:
-            pass  # Игнорируем ошибки обновления статуса
+        except (AttributeError, RuntimeError):
+            # Игнорируем ошибки обновления статуса если объект был удален
+            pass

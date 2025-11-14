@@ -1,7 +1,12 @@
 import time
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, Tuple
 from database import save_weighing
+from logger import get_logger
+
+# Настройка логирования для auto_weighing_engine модуля
+logger = get_logger('auto_weighing_engine')
 
 
 class AutoWeighingEngine:
@@ -151,7 +156,7 @@ class AutoWeighingEngine:
             self.weight_was_zero = False
 
         except Exception as e:
-            print(f"Ошибка при автоматическом сохранении: {str(e)}")
+            logger.error(f"Ошибка при автоматическом сохранении: {str(e)}")
             raise
 
     def get_status_info(self) -> Dict[str, Any]:

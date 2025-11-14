@@ -2,6 +2,11 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from datetime import datetime as dt
 from database import get_weighings
 import sqlite3
+import logging
+from logger import get_logger
+
+# Настройка логирования для left_panel модуля
+logger = get_logger('left_panel')
 
 
 class LeftPanelWidget(QtWidgets.QWidget):
@@ -164,9 +169,9 @@ class LeftPanelWidget(QtWidgets.QWidget):
         # Запрещаем редактирование таблицы (будет включено для админа)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         # Реакция на выделение строк для обновления сводки
-        self.table.itemSelectionChanged.connect(self.on_selection_changed)
+        self.selection_changed_connection = self.table.itemSelectionChanged.connect(self.on_selection_changed)
         # Обработчик для сохранения изменений в базе данных (только для админа)
-        self.table.itemChanged.connect(self.on_item_changed)
+        self.item_changed_connection = self.table.itemChanged.connect(self.on_item_changed)
         # Устанавливаем политику размера для полного заполнения блока
         self.table.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         table_layout.addWidget(self.table)
@@ -269,6 +274,31 @@ class LeftPanelWidget(QtWidgets.QWidget):
             self.stacked_widget.setCurrentIndex(0)  # Показываем сообщение о входе
             self.is_admin = False
 
+    def disconnect_signals(self):
+        """Отключение сигналов для предотвращения memory leaks"""
+        try:
+            if hasattr(self, 'selection_changed_connection'):
+                self.table.itemSelectionChanged.disconnect(self.selection_changed_connection)
+            if hasattr(self, 'item_changed_connection'):
+                self.table.itemChanged.disconnect(self.item_changed_connection)
+            # Отключаем сигналы фильтров
+            if hasattr(self, 'filter_checkbox'):
+                self.filter_checkbox.stateChanged.disconnect()
+            if hasattr(self, 'mode_checkbox'):
+                self.mode_checkbox.stateChanged.disconnect()
+            if hasattr(self, 'date_edit1'):
+                self.date_edit1.dateChanged.disconnect()
+            if hasattr(self, 'time_edit1'):
+                self.time_edit1.timeChanged.disconnect()
+            if hasattr(self, 'date_edit2'):
+                self.date_edit2.dateChanged.disconnect()
+            if hasattr(self, 'time_edit2'):
+                self.time_edit2.timeChanged.disconnect()
+            # Логируем отключение сигналов только в случае ошибки
+            pass
+        except Exception as e:
+            logger.error(f"Ошибка при отключении сигналов left_panel: {e}")
+
     def load_weighings_data(self):
         """Загружает данные взвешиваний из базы данных в таблицу"""
         if not self.current_user:
@@ -280,7 +310,7 @@ class LeftPanelWidget(QtWidgets.QWidget):
             self.all_weighings = get_weighings(operator=self.current_user)
             self.apply_filters()
         except Exception as e:
-            print(f"Ошибка при загрузке данных взвешиваний: {e}")
+            logger.error(f"Ошибка при загрузке данных взвешиваний: {e}")
             # В случае ошибки показываем пустую таблицу
             self.table.setRowCount(0)
             self.summary_changed.emit("Ошибка загрузки данных")
@@ -429,8 +459,8 @@ class LeftPanelWidget(QtWidgets.QWidget):
                     # Обновляем поле
                     cursor.execute(f'UPDATE weighings SET {field}=? WHERE id=?', (new_value, record_id))
                     conn.commit()
-                    print(f"Обновлено поле {field} для записи ID {record_id}: {new_value}")
+                    logger.info(f"Пользователь '{self.current_user}' (админ) изменил поле {field} записи ID {record_id}: '{new_value}'")
                 else:
-                    print("Не удалось найти запись для обновления")
+                    logger.warning(f"Пользователь '{self.current_user}' (админ) не смог найти запись для обновления поля {field}")
 
                 conn.close()

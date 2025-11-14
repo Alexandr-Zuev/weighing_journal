@@ -1,11 +1,16 @@
 import sqlite3
 import time
+import logging
 from datetime import datetime
 from PyQt5 import QtWidgets, QtCore, QtGui
 from weight_display_controller import WeightDisplayController
 from weight_reader import WeightReader
 from auto_weighing_engine import AutoWeighingEngine
 from weighing_service import WeighingService
+from logger import get_logger
+
+# Настройка логирования для right_panel модуля
+logger = get_logger('right_panel')
 
 DB_FILE = 'weights_journal.db'
 
@@ -397,12 +402,12 @@ class RightPanelWidget(QtWidgets.QWidget):
         self.timer.timeout.connect(self.read_or_simulate_weight)
         self.timer.start(100)  # Уменьшаем интервал до 50мс для более быстрого чтения данных
 
-
-        # Связываем кнопки с методами
-        self.connect_button.clicked.connect(self.on_connect_clicked)
-        self.disconnect_button.clicked.connect(self.on_disconnect_clicked)
-        self.save_weight_button.clicked.connect(self.on_save_weight_clicked)
-        self.auto_weight_checkbox.stateChanged.connect(self.on_auto_weighing_toggled)
+        # Сохраняем ссылки на соединения сигналов для последующего отключения
+        self.connect_button_connection = self.connect_button.clicked.connect(self.on_connect_clicked)
+        self.disconnect_button_connection = self.disconnect_button.clicked.connect(self.on_disconnect_clicked)
+        self.save_weight_button_connection = self.save_weight_button.clicked.connect(self.on_save_weight_clicked)
+        self.auto_weight_checkbox_connection = self.auto_weight_checkbox.stateChanged.connect(self.on_auto_weighing_toggled)
+        self.timer_connection = self.timer.timeout.connect(self.read_or_simulate_weight)
 
         self.load_configurations_into_combo()
         self.update_info_display()
@@ -598,7 +603,7 @@ class RightPanelWidget(QtWidgets.QWidget):
 
         except Exception as e:
             # Логируем ошибку и обрабатываем разрыв соединения
-            print(f"Ошибка в read_or_simulate_weight: {str(e)}")
+            logger.error(f"Ошибка в read_or_simulate_weight: {str(e)}")
             self._handle_connection_loss()
 
 
@@ -611,29 +616,37 @@ class RightPanelWidget(QtWidgets.QWidget):
     def _process_auto_weighing_call(self, weight_value):
         """Обрабатывает вызов автоматического взвешивания с ограничением частоты"""
         try:
+            # Проверяем, что объект еще существует и не был удален
+            if not hasattr(self, 'last_auto_weigh_call') or not hasattr(self, 'auto_weigh_interval'):
+                return
+
             current_time = time.time() * 1000  # мс
             if current_time - self.last_auto_weigh_call > self.auto_weigh_interval:
                 self.process_auto_weighing(weight_value)
                 self.last_auto_weigh_call = current_time
         except (AttributeError, RuntimeError):
-            # Игнорируем ошибки если переменные недоступны
+            # Игнорируем ошибки если переменные недоступны или объект удален
             pass
 
     def _handle_port_error(self, error):
         """Обрабатывает критические ошибки порта"""
         try:
+            # Проверяем, что объект еще существует
+            if not hasattr(self, 'weight_display_manager') or self.weight_display_manager is None:
+                return
+
             error_msg = f"Ошибка порта: {str(error)}"
-            if hasattr(self, 'weight_display_manager'):
-                # Сбрасываем отображение веса при ошибке порта
-                self.weight_display_manager.reset()
+            # Сбрасываем отображение веса при ошибке порта
+            self.weight_display_manager.reset()
         except (AttributeError, RuntimeError):
+            # Игнорируем ошибки если объект был удален
             pass
 
     def _handle_connection_loss(self):
         """Обрабатывает потерю соединения с весами"""
         if not self.connection_lost:
             self.connection_lost = True
-            print("Соединение с весами потеряно")
+            logger.warning("Соединение с весами потеряно")
             self.update_connection_status(False)
             self.timer.stop()  # Останавливаем таймер при потере соединения
 
@@ -658,7 +671,7 @@ class RightPanelWidget(QtWidgets.QWidget):
             if self.receipt_checkbox.isChecked():
                 self._perform_auto_print_receipt(current_weight)
 
-            print(f"Автоматически сохранен вес: {current_weight} кг")
+            logger.info(f"Автоматически сохранен вес: {current_weight} кг")
 
     def _reset_auto_weighing_state(self):
         """Сбрасывает состояние автоматического взвешивания"""
@@ -720,14 +733,14 @@ class RightPanelWidget(QtWidgets.QWidget):
             if hasattr(self, 'printer_manager') and self.printer_manager:
                 success, message = self.printer_manager.print_receipt(receipt_data)
                 if success:
-                    print(f"Чек автоматически распечатан: {weight} кг")
+                    logger.info(f"Чек автоматически распечатан: {weight} кг")
                 else:
-                    print(f"Ошибка при автоматической чекопечати: {message}")
+                    logger.error(f"Ошибка при автоматической чекопечати: {message}")
             else:
-                print("Ошибка: менеджер термопринтера не доступен")
+                logger.warning("Ошибка: менеджер термопринтера не доступен")
 
         except Exception as e:
-            print(f"Ошибка при автоматической печати чека: {str(e)}")
+            logger.error(f"Ошибка при автоматической печати чека: {str(e)}")
 
     def _validate_auto_save_data(self, weight):
         """Проверяет валидность данных для автоматического сохранения"""
@@ -758,6 +771,10 @@ class RightPanelWidget(QtWidgets.QWidget):
     def _update_auto_save_status(self, success, weight, error_msg=None):
         """Обновляет статус автоматического сохранения для отображения пользователю"""
         try:
+            # Проверяем, что объект еще существует
+            if not hasattr(self, 'auto_weight_label') or self.auto_weight_label is None:
+                return
+
             if success:
                 status_text = f"Автоматически сохранен вес: {weight:.1f} кг"
             else:
@@ -845,8 +862,10 @@ class RightPanelWidget(QtWidgets.QWidget):
             # Уведомляем левую панель о новом взвешивании
             self.weighing_saved.emit()
 
+            logger.info(f"Пользователь '{self.current_user}' вручную сохранил вес: {weight} кг")
             QtWidgets.QMessageBox.information(self, "Успех", f"Вес {weight} кг успешно сохранен.")
         else:
+            logger.warning(f"Пользователь '{self.current_user}' не смог сохранить вес {weight} кг")
             QtWidgets.QMessageBox.critical(self, "Ошибка", "Ошибка при сохранении веса.")
 
 
@@ -865,5 +884,33 @@ class RightPanelWidget(QtWidgets.QWidget):
             self.toggle_button.setToolTip("Развернуть поля ввода")
     
     
+
+    def disconnect_signals(self):
+        """Отключение всех сигналов для предотвращения memory leaks"""
+        try:
+            # Отключаем сигналы кнопок
+            if hasattr(self, 'connect_button_connection'):
+                self.connect_button.clicked.disconnect(self.connect_button_connection)
+            if hasattr(self, 'disconnect_button_connection'):
+                self.disconnect_button.clicked.disconnect(self.disconnect_button_connection)
+            if hasattr(self, 'save_weight_button_connection'):
+                self.save_weight_button.clicked.disconnect(self.save_weight_button_connection)
+            if hasattr(self, 'auto_weight_checkbox_connection'):
+                self.auto_weight_checkbox.stateChanged.disconnect(self.auto_weight_checkbox_connection)
+
+            # Отключаем сигнал таймера
+            if hasattr(self, 'timer_connection'):
+                self.timer.timeout.disconnect(self.timer_connection)
+
+            # Останавливаем таймер
+            if hasattr(self, 'timer') and self.timer.isActive():
+                self.timer.stop()
+
+            # Отключаем сигнал toggle_button
+            if hasattr(self, 'toggle_button'):
+                self.toggle_button.clicked.disconnect()
+
+        except Exception as e:
+            logger.error(f"Ошибка при отключении сигналов right_panel: {e}")
 
     # Метод parse_weight_from_raw больше не нужен, так как логика переехала в WeightReader

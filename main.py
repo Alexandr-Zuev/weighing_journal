@@ -1,4 +1,5 @@
 import sys
+import logging
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5 import QtPrintSupport
 from header import HeaderWidget
@@ -14,6 +15,10 @@ import csv
 from datetime import datetime
 import license_manager
 from activation_dialog import ActivationDialog
+from logger import get_logger
+
+# Настройка логирования для main модуля
+logger = get_logger('main')
 
 
 class WeighingJournal(QtWidgets.QMainWindow):
@@ -70,19 +75,19 @@ class WeighingJournal(QtWidgets.QMainWindow):
         self.header.add_scales_clicked.connect(self.add_new_scales)
         self.header.user_management_clicked.connect(self.open_user_management_dialog)
         self.header.delete_record_clicked.connect(self.on_delete_record)
-        
+
         # Подключение сигнала сохранения взвешивания к обновлению таблицы
-        self.scales_manager.weighing_saved.connect(self.left_panel.refresh_weighings_data)
+        self.weighing_saved_connection = self.scales_manager.weighing_saved.connect(self.left_panel.refresh_weighings_data)
 
         # Связываем сводку и пользователя с футером
-        self.left_panel.summary_changed.connect(self.footer.set_status_text)
+        self.summary_changed_connection = self.left_panel.summary_changed.connect(self.footer.set_status_text)
         self.footer.set_user(self.current_user)
 
         # Действия футера
-        self.footer.print_clicked.connect(self.on_footer_print)
-        self.footer.receipt_print_clicked.connect(self.on_footer_receipt_print)
-        self.footer.export_clicked.connect(self.on_footer_export)
-        self.footer.report_clicked.connect(self.on_footer_report)
+        self.print_clicked_connection = self.footer.print_clicked.connect(self.on_footer_print)
+        self.receipt_print_clicked_connection = self.footer.receipt_print_clicked.connect(self.on_footer_receipt_print)
+        self.export_clicked_connection = self.footer.export_clicked.connect(self.on_footer_export)
+        self.report_clicked_connection = self.footer.report_clicked.connect(self.on_footer_report)
 
     def add_new_scales(self):
         """Добавляет новые весы в интерфейс"""
@@ -139,14 +144,30 @@ class WeighingJournal(QtWidgets.QMainWindow):
         # Удаляем временный файл через некоторое время (асинхронно)
         import threading
         def cleanup_temp_file():
-            import time
-            time.sleep(5)  # Даем время на открытие файла
             try:
-                os.unlink(temp_path)
-            except:
-                pass  # Игнорируем ошибки удаления
+                import time
+                time.sleep(5)  # Даем время на открытие файла
 
-        threading.Thread(target=cleanup_temp_file, daemon=True).start()
+                # Проверяем, что файл еще существует перед удалением
+                if os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                        logger.info(f"Временный PDF файл удален: {temp_path}")
+                    except OSError as e:
+                        logger.warning(f"Не удалось удалить временный PDF файл {temp_path}: {e}")
+                    except Exception as e:
+                        logger.error(f"Неожиданная ошибка при удалении временного файла {temp_path}: {e}")
+                else:
+                    logger.debug(f"Временный файл {temp_path} уже был удален")
+            except Exception as e:
+                logger.error(f"Критическая ошибка в cleanup_temp_file: {e}")
+
+        try:
+            cleanup_thread = threading.Thread(target=cleanup_temp_file, daemon=True, name="PDFCleanup")
+            cleanup_thread.start()
+            logger.debug("Запущен поток очистки временного PDF файла")
+        except Exception as e:
+            logger.error(f"Не удалось запустить поток очистки: {e}")
 
     def _draw_invoice(self, painter: QtGui.QPainter, printer: QtPrintSupport.QPrinter):
         # Геометрия страницы
@@ -321,8 +342,10 @@ class WeighingJournal(QtWidgets.QMainWindow):
                         item = table.item(row, col)
                         row_vals.append(item.text() if item else '')
                     writer.writerow(row_vals)
+            logger.info(f"Пользователь '{self.current_user}' экспортировал {table.rowCount()} записей в CSV файл: {path}")
             QtWidgets.QMessageBox.information(self, "Экспорт", "Данные успешно экспортированы в CSV.")
         except Exception as e:
+            logger.error(f"Пользователь '{self.current_user}' не смог экспортировать данные в CSV: {e}")
             QtWidgets.QMessageBox.critical(self, "Ошибка экспорта", str(e))
 
     def on_footer_receipt_print(self):
@@ -372,8 +395,10 @@ class WeighingJournal(QtWidgets.QMainWindow):
         # Распечатать чек
         success, message = self.printer_manager.print_receipt(receipt_data)
         if success:
+            logger.info(f"Пользователь '{self.current_user}' распечатал чек")
             QtWidgets.QMessageBox.information(self, "Успех", message)
         else:
+            logger.warning(f"Пользователь '{self.current_user}' не смог распечатать чек: {message}")
             QtWidgets.QMessageBox.critical(self, "Ошибка", message)
 
     def on_footer_report(self):
@@ -401,24 +426,33 @@ class WeighingJournal(QtWidgets.QMainWindow):
             config_name = dialog.name_edit.text()
             com_port = dialog.port_combo.currentText()
             baud_rate = dialog.baud_combo.currentText()
-            print(f"Config: {config_name}, Port: {com_port}, Baud: {baud_rate}")
+            logger.info(f"Пользователь '{self.current_user}' настроил COM-порт: {config_name}, Port: {com_port}, Baud: {baud_rate}")
 
     def open_printer_config_dialog(self):
         """Открыть диалог настроек термопринтера"""
         dialog = ThermalPrinterDialog(parent=self, printer_manager=self.printer_manager)
-        dialog.exec_()
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            logger.info(f"Пользователь '{self.current_user}' настроил термопринтер")
+        else:
+            logger.debug(f"Пользователь '{self.current_user}' отменил настройку термопринтера")
 
     def open_user_management_dialog(self):
         """Открыть диалог управления пользователями"""
         if self.current_user != "admin":
+            logger.warning(f"Пользователь '{self.current_user}' попытался открыть управление пользователями (доступ запрещен)")
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Только администратор может управлять пользователями.")
             return
+        logger.info(f"Администратор '{self.current_user}' открыл диалог управления пользователями")
         dialog = UserManagementDialog(parent=self)
-        dialog.exec_()
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            logger.info(f"Администратор '{self.current_user}' внес изменения в управление пользователями")
+        else:
+            logger.debug(f"Администратор '{self.current_user}' отменил изменения в управлении пользователями")
 
     def on_delete_record(self):
         """Удалить выбранную запись из таблицы"""
         if self.current_user != "admin":
+            logger.warning(f"Пользователь '{self.current_user}' попытался удалить записи (доступ запрещен)")
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Только администратор может удалять записи.")
             return
 
@@ -468,6 +502,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
             conn.commit()
             conn.close()
 
+            logger.info(f"Пользователь '{self.current_user}' (админ) удалил {deleted_count} записей из журнала")
             QtWidgets.QMessageBox.information(self, "Успех", f"Удалено {deleted_count} запись(ей).")
             # Обновить сводку
             self.left_panel.on_selection_changed()
@@ -484,6 +519,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
             self.left_panel.set_current_user(username)
             # Обновляем футер
             self.footer.set_user(username)
+            logger.info(f"Пользователь '{username}' успешно авторизован")
             QtWidgets.QMessageBox.information(self, "Успех", f"Пользователь '{username}' успешно авторизован.")
 
     def on_logout(self):
@@ -497,6 +533,7 @@ class WeighingJournal(QtWidgets.QMainWindow):
         )
 
         if reply == QtWidgets.QMessageBox.Yes:
+            username = self.current_user  # Сохраняем имя для лога
             # Выполняем выход из системы
             self.current_user = None
             self.header.logout()
@@ -505,22 +542,74 @@ class WeighingJournal(QtWidgets.QMainWindow):
             self.left_panel.set_current_user(None)
             # Обновляем футер
             self.footer.set_user(None)
+            logger.info(f"Пользователь '{username}' вышел из системы")
             QtWidgets.QMessageBox.information(self, "Сеанс завершён", "Вы вышли из системы.")
 
     def closeEvent(self, a0):
         """Обработчик события закрытия окна с подтверждением"""
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            'Подтверждение выхода',
-            'Вы действительно хотите выйти из приложения?',
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No
-        )
+        try:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                'Подтверждение выхода',
+                'Вы действительно хотите выйти из приложения?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No
+            )
 
-        if reply == QtWidgets.QMessageBox.Yes:
-            a0.accept()  # Закрываем приложение
-        else:
-            a0.ignore()  # Игнорируем событие закрытия
+            if reply == QtWidgets.QMessageBox.Yes:
+                # Отключаем все сигналы перед закрытием для предотвращения memory leaks
+                try:
+                    self._disconnect_all_signals()
+                except Exception as e:
+                    logger.error(f"Ошибка при отключении сигналов при закрытии: {e}")
+                a0.accept()  # Закрываем приложение
+            else:
+                a0.ignore()  # Игнорируем событие закрытия
+        except Exception as e:
+            logger.error(f"Ошибка в обработчике закрытия приложения: {e}")
+            a0.accept()  # В случае ошибки все равно закрываем
+
+    def _disconnect_all_signals(self):
+        """Отключение всех сигналов для предотвращения memory leaks"""
+        try:
+            # Отключаем сигналы из header
+            if hasattr(self, 'header'):
+                self.header.system_clicked.disconnect()
+                self.header.printer_config_clicked.disconnect()
+                self.header.login_clicked.disconnect()
+                self.header.logout_clicked.disconnect()
+                self.header.add_scales_clicked.disconnect()
+                self.header.user_management_clicked.disconnect()
+                self.header.delete_record_clicked.disconnect()
+
+            # Отключаем сигналы из scales_manager
+            if hasattr(self, 'weighing_saved_connection'):
+                self.scales_manager.weighing_saved.disconnect(self.weighing_saved_connection)
+
+            # Отключаем сигналы из left_panel
+            if hasattr(self, 'summary_changed_connection'):
+                self.left_panel.summary_changed.disconnect(self.summary_changed_connection)
+            # Отключаем все сигналы left_panel
+            if hasattr(self, 'left_panel'):
+                self.left_panel.disconnect_signals()
+
+            # Отключаем сигналы из right_panel (scales_manager)
+            if hasattr(self, 'scales_manager'):
+                self.scales_manager.disconnect_signals()
+
+            # Отключаем сигналы из footer
+            if hasattr(self, 'footer'):
+                if hasattr(self, 'print_clicked_connection'):
+                    self.footer.print_clicked.disconnect(self.print_clicked_connection)
+                if hasattr(self, 'receipt_print_clicked_connection'):
+                    self.footer.receipt_print_clicked.disconnect(self.receipt_print_clicked_connection)
+                if hasattr(self, 'export_clicked_connection'):
+                    self.footer.export_clicked.disconnect(self.export_clicked_connection)
+                if hasattr(self, 'report_clicked_connection'):
+                    self.footer.report_clicked.disconnect(self.report_clicked_connection)
+
+        except Exception as e:
+            logger.error(f"Ошибка при отключении сигналов: {e}")
 
 
 if __name__ == "__main__":

@@ -63,6 +63,9 @@
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\Lib\\ast.py',
    'PYMODULE'),
+  ('auto_weighing_engine',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\auto_weighing_engine.py',
+   'PYMODULE'),
   ('base64',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\Lib\\base64.py',
@@ -393,6 +396,9 @@
   ('license_manager',
    'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\license_manager.py',
    'PYMODULE'),
+  ('logger',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\logger.py',
+   'PYMODULE'),
   ('logging',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\Lib\\logging\\__init__.py',
@@ -594,9 +600,21 @@
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\Lib\\urllib\\parse.py',
    'PYMODULE'),
+  ('user_management_dialog',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\user_management_dialog.py',
+   'PYMODULE'),
   ('uuid',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.2544.0_x64__qbz5n2kfra8p0\\Lib\\uuid.py',
+   'PYMODULE'),
+  ('weighing_service',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\weighing_service.py',
+   'PYMODULE'),
+  ('weight_display_controller',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\weight_display_controller.py',
+   'PYMODULE'),
+  ('weight_reader',
+   'c:\\Users\\a.zuev\\Desktop\\weighing_journal\\weight_reader.py',
    'PYMODULE'),
   ('zipfile',
    'C:\\Program '
